@@ -5,7 +5,8 @@ import numpy as np
 
 #Toda operación que lleve el tf, esta ejecutanode en GPU (porque ya CUDA se enlazo con mi grafica NVIDIA y da true)
 #Toda operación con np, esta en CPU
-#segundo paso, se define como creo mi PINNN, cuantas capaz y neuronas, y el  
+
+#primer paso, se define como creo mi PINNN, cuantas capaz y neuronas 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 class PINN(tf.keras.Model):  
     def __init__(self, layers):
@@ -40,7 +41,7 @@ class PINN(tf.keras.Model):
 
 
 
-#tercer paso ,La función de pérdida es el núcleo de las PINNs. Combina tres componentes:
+#segundo paso ,La función de pérdida es el núcleo de las PINNs. Combina tres componentes:
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 #(1) Pérdida de la PDE: Mide cuánto se desvía la solución de la red neuronal de la ecuación diferencial. ∥∂u/∂t-α*∂²u/∂x²∥²
@@ -109,7 +110,7 @@ def Frontera_loss(model,x_boundary,t_boundary,u_boundary):
 
 
 
-#cuarto paso, creamos el entrenamiento
+#tercer paso, generamos la data de la EDP (SEGUN LA ECUACION DEL CALOR) y definimos el entrenamiento
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #(1)Defino la data
 #...........................................................................................................................................................................................................................................................................
@@ -173,7 +174,7 @@ for epoch in range(epochs):
 print("holaa")
 
 
-
+#cuarto paso, mostramos vizualisaciones de los datos
 #---------------------------------------------------------------------------------------------
 
 # 1. Crear la malla con tf.meshgrid
@@ -196,7 +197,7 @@ U_pred_np = U_pred.numpy()
 # 5. Graficar la solución en 3D
 fig = plt.figure(figsize=(10, 6))
 ax = fig.add_subplot(111, projection='3d')
-ax.plot_surface(X_np, T_np, U_pred_np, cmap='hot') # Usa 'hot' para reflejar calor
+ax.plot_surface(X_np, T_np, U_pred_np, cmap='hot')
 
 # Etiquetas
 ax.set_xlabel('Posición x')
@@ -207,21 +208,45 @@ ax.set_title('Solución de la EDP con PINN, con U^2')
 plt.show()
 
 #---------------------------------------------------------------------------------------------
-#crearemos un mapa de calor para tener mejor vizualisación de la malla
+#Crearemos un mapa de Calor para tener mejor vizualisación de la malla
 
 plt.figure(figsize=(8, 6))
-plt.contourf(X, T, U_pred, levels=100, cmap='inferno')  
+plt.contourf(X, T, U_pred, levels=100, cmap='inferno')  # Usa 'hot' para reflejar calor
 plt.colorbar(label="Temperatura")
 plt.xlabel("Posición x")
 plt.ylabel("Tiempo t")
 plt.title("Mapa de calor de la solución PINN, con U^2 y operador no lineal e")
 plt.show()
 
+
+
+#---------------------------------------------------------------------------------------------
+#ESTE ES UN MAPA DE CALOR DE CAPAZ POR CADA NEURONA, PARA VER SU ACTIVACIÓN
+for i, layer in enumerate(model.layers):
+    weights = layer.get_weights()
+    if weights:
+        w = weights[0]  # solo los pesos (sin bias)
+        plt.figure(figsize=(10, 2))
+        plt.title(f'Pesos de la capa {i+1} - shape: {w.shape}')                          #(M)
+        plt.imshow(w, aspect='auto', cmap='coolwarm')
+        plt.colorbar()
+        plt.show()
+
 #NOTAS
+
+
 """
-Esta es la segunda versión de la EDP de calor que se realizo
+versión 2
 * u_initial ahora es e^-x [1,1], ahora converge el entrenamiento mejor
 * La malla 3D ahora tiene colores rojos y amarillos, mostrando la intensidad de donde se ve más el calor , que es en las puntas de la montaña por asi decirlo
 * se le agrego un opeador no lineal a la EDP, por tanto se una modificación en EDP Loss ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²
 * se realizo un mapa en 2D, para no ver la montaña, sino como un mapa de calor de la malla al estilo wilteck
+"""
+
+
+"""
+versión 3
+*se ajustaron comentarios que no se hicieron en "EDP original. op no lineal"
+*se adiciono un mapa de calor para ver la activación de las neuronas por capa "OJO ESTO ES DESPUES DEL ENTRENAMIENTO"(M)
+* en la proxima versión se adiconaran los comentarios de la (versión 1), más un comentario donde no estaba el operador no lineal
 """
