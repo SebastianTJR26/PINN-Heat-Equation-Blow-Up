@@ -7,6 +7,9 @@ import numpy as np
 #Toda operación con np, esta en CPU
 
 #primer paso, se define como creo mi PINNN, cuantas capaz y neuronas 
+from keras.saving import register_keras_serializable
+
+@register_keras_serializable()  # ¡Esta línea es crucial! 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 class PINN(tf.keras.Model):  
     def __init__(self, layers):
@@ -149,11 +152,13 @@ beta = tf.constant(0.1, dtype=tf.float32)
 #(2)defino mi modelo (cuantas capas y que optimizador quiero, usualmente es adam, y el número de epocas que se entrenara)
 model = PINN([20, 20, 20, 1])#la ultima capa siemrpe debe ser una neurona!!
 optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
-epochs = 500
+epochs = 1000
 #...........................................................................................................................................................................................................................................................................
 
 
-#(3)ENTRENAMIENTO!
+#(3)ENTRENAMIENTO! (ACTUALIZACIÓN, se adiciona en el código la forma de guardar los mejores pesos entrenados)
+best_epoch = 0  #guardamos la epoca donde mejor fue entrenado el modelo
+best_loss = 50000000.0 #guardamos el función de perdida más baja que dio, para saber cual fue el mejor entrenamiento, comenzamos en un valor muy alto para hacer comparación
 
 for epoch in range(epochs):
     with tf.GradientTape() as tape:
@@ -167,11 +172,24 @@ for epoch in range(epochs):
 
     gradients = tape.gradient(PINN_loss, model.trainable_variables)
     optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+    loss = PINN_loss.numpy()
+    
+    if  loss < best_loss: #si encontro una función de perdida donde aprendio mejor (redujo más), guarde cuanto fue, en que época y guarde esos pesos que fueron los mejroes entrenados
+        best_loss = loss
+        best_epoch = epoch
+        model.save_weights("mejores_pesos_pinn.weights.h5")        #(P)
 
     
-    print(f"Epoch {epoch}/{epochs},Loss_PINN: {PINN_loss.numpy()}")
+    print(f"Epoch {epoch}/{epochs},Loss_PINN: {loss}")
 
 print("holaa")
+print("mejor epoca de entrenamiento:", best_epoch)
+print("valor de la PINN_loss:", best_loss )
+
+#---------------------------------------------------------------------------------------------
+#PESOS
+model.load_weights("mejores_pesos_pinn.weights.h5") #cargue los mejores pesos del entrenamiento  (P)
+#---------------------------------------------------------------------------------------------
 
 
 #cuarto paso, mostramos vizualisaciones de los datos
@@ -234,6 +252,15 @@ for i, layer in enumerate(model.layers):
 
 #NOTAS
 
+"""
+versión 1
+Esta es la primera versión de la EDP de calor que se realizo
+* u_initial es SIN(πx) [0,1]
+* Se genera una malla en 3D despues del entrenamiento "de colores azules"
+* Esta es la PINN clasica, solo la EDP sin un operador no lineal y ninguna modificacion a la pinn_loss 
+EDP loss original ||∂u/∂t - α * ∂²u/∂x²||²
+"""
+
 
 """
 versión 2
@@ -249,4 +276,15 @@ versión 3
 *se ajustaron comentarios que no se hicieron en "EDP original. op no lineal"
 *se adiciono un mapa de calor para ver la activación de las neuronas por capa "OJO ESTO ES DESPUES DEL ENTRENAMIENTO"(M)
 * en la proxima versión se adiconaran los comentarios de la (versión 1), más un comentario donde no estaba el operador no lineal
+"""
+
+"""
+versión 4
+*Se adicionaron los comentarios de la versión 1, más un mensaje de la EDP loss original
+*Se aumento el entrenamiento de 500 a 1000
+*Se adiciono el guardar los mejores pesos despues del entrenamiento (P)
+*en el encabezado del código, se tuvo que agregar esta linea para poder guardar los pesos entrenados "register_keras_serializable()", más una libreria que no estaba en la versión 3
+*neuronas muy activadas (color rojo intenso, valor positivo alto) neuronas negativas (valor negativo alto, ese valor no significa que la neurona este mal,sino que es un valor inverso que dio en el entrenamiento analogo a la neurona roja, son importantes tambien )
+*neuronas claras(las que estan más cerca a cero, por ambos sentidos, + ó -, estas sin no sirven, no se estan activando)
+*se guardaron tambien no solo los mejores pesos, sino en que época fue y el valor de la función de perdida que dio
 """
