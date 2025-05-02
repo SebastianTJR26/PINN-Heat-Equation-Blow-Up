@@ -45,7 +45,7 @@ class PINN(tf.keras.Model):
 
 #(1) Pérdida de la PDE: Mide cuánto se desvía la solución de la red neuronal de la ecuación diferencial. ∥∂u/∂t-α*∂²u/∂x²∥²
 #...........................................................................................................................................................................................................................................................................
-def EDP_loss(model, x, t, alpha):
+def EDP_loss(model, x, t, alpha,beta):
     # tf.GradientTape es una herramienta de TensorFlow para calcular derivadas (gradientes) de operaciones con respecto a sus variables.
     # with asegura que todas las operaciones dentro de él sean "grabadas" por GradientTape, para que luego se puedan calcular sus gradientes.
     # El parámetro persistent=True permite que la cinta (tape) sea reutilizable para calcular múltiples gradientes. 
@@ -76,7 +76,7 @@ def EDP_loss(model, x, t, alpha):
         # Las derivadas deben estar dentro del tape, porque TensorFlow está rastreando si se hace bien.
         # Si están fuera, podrían dar None.
 
-    return tf.reduce_mean((du_dt - alpha * d2u_dx2)**2)  # ||∂u/∂t - α * ∂²u/∂x²||²
+    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*u**2)**2)  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²
 
 # Otra forma de hacerlo:
 # u = model(tf.stack([x, t], axis=1))  # tf.stack([x, t], axis=1) y tape.watch([x, t])
@@ -86,9 +86,9 @@ def EDP_loss(model, x, t, alpha):
 #(2) Calculo con los valores inicales de la EDP para su función de perfida . ∥u(x,0)−u(x)∥² Mide cuánto se desvía la solución de la red neuronal de las condiciones iniciales.
 #...........................................................................................................................................................................................................................................................................
 def Valores_Iniciales_loss(model, x, t_initial, u_initial):
-	#tape.watch([x, t_initial, u_initial])  # ¡Innecesario! ya que no se hara ninguna operación de diferencia finita, esto solo es cuando uno hace gradiente a cosas no declaradas con tensorflow, como numpy
+    #tape.watch([x, t_initial, u_initial])  # ¡Innecesario! ya que no se hara ninguna operación de diferencia finita, esto solo es cuando uno hace gradiente a cosas no declaradas con tensorflow, como numpy
 
-	# Predecir u(x, t_initial) usando la red neuronal
+    # Predecir u(x, t_initial) usando la red neuronal
     u = model(tf.stack([x, t_initial], axis=1))
     # Calcular la pérdida: (u - u_initial)²
     return tf.reduce_mean((u- u_initial)**2)
@@ -126,7 +126,8 @@ x_initial = tf.convert_to_tensor(np.linspace(0, 1, 100), dtype=tf.float32)
 t_initial = tf.zeros_like(x_initial, dtype=tf.float32)
 
 # Condición inicial u(x,0) = sin(pi * x), valores de u en t=0
-u_initial = tf.convert_to_tensor(np.sin(np.pi * np.linspace(0, 1, 100)), dtype=tf.float32)
+#u_initial = tf.convert_to_tensor(np.sin(np.pi * np.linspace(0, 1, 100)), dtype=tf.float32)
+u_initial = tf.convert_to_tensor(np.exp(-1*np.linspace(-1, 1, 100)**2),dtype=tf.float32) #LEONARDO
 
 # Puntos de la frontera x=0 y x=1 (solo dos valores: 0 y 1, representan los extremos del dominio)
 x_boundary = tf.convert_to_tensor([0, 1], dtype=tf.float32)
@@ -139,6 +140,9 @@ u_boundary = tf.zeros_like(t_boundary, dtype=tf.float32)
 
 # Coeficiente de difusión del calor (parametro físico)
 alpha = tf.constant(0.01, dtype=tf.float32)
+
+# Coeficiente de difusión del calor (parametro físico)
+beta = tf.constant(0.1, dtype=tf.float32)
 #...........................................................................................................................................................................................................................................................................
 
 #(2)defino mi modelo (cuantas capas y que optimizador quiero, usualmente es adam, y el número de epocas que se entrenara)
@@ -152,7 +156,7 @@ epochs = 500
 
 for epoch in range(epochs):
     with tf.GradientTape() as tape:
-         loss_1 = EDP_loss(model, x, t, alpha)
+         loss_1 = EDP_loss(model, x, t, alpha,beta)
 
          loss_2 = Valores_Iniciales_loss(model, x_initial, t_initial, u_initial)
 
@@ -192,20 +196,32 @@ U_pred_np = U_pred.numpy()
 # 5. Graficar la solución en 3D
 fig = plt.figure(figsize=(10, 6))
 ax = fig.add_subplot(111, projection='3d')
-ax.plot_surface(X_np, T_np, U_pred_np, cmap='viridis')
+ax.plot_surface(X_np, T_np, U_pred_np, cmap='hot') # Usa 'hot' para reflejar calor
 
 # Etiquetas
 ax.set_xlabel('Posición x')
 ax.set_ylabel('Tiempo t')
 ax.set_zlabel('Solución u(x,t)')
-ax.set_title('Solución de la EDP con PINN')
+ax.set_title('Solución de la EDP con PINN, con U^2')
 
+plt.show()
+
+#---------------------------------------------------------------------------------------------
+#crearemos un mapa de calor para tener mejor vizualisación de la malla
+
+plt.figure(figsize=(8, 6))
+plt.contourf(X, T, U_pred, levels=100, cmap='inferno')  
+plt.colorbar(label="Temperatura")
+plt.xlabel("Posición x")
+plt.ylabel("Tiempo t")
+plt.title("Mapa de calor de la solución PINN, con U^2 y operador no lineal e")
 plt.show()
 
 #NOTAS
 """
-Esta es la primera versión de la EDP de calor que se realizo
-* u_initial es SIN(πx) [0,1]
-* Se genera una malla en 3D despues del entrenamiento "de colores azules"
-* Esta es la PINN clasica, solo la EDP sin un operador no lineal y ninguna modificacion a la pinn_loss
+Esta es la segunda versión de la EDP de calor que se realizo
+* u_initial ahora es e^-x [1,1], ahora converge el entrenamiento mejor
+* La malla 3D ahora tiene colores rojos y amarillos, mostrando la intensidad de donde se ve más el calor , que es en las puntas de la montaña por asi decirlo
+* se le agrego un opeador no lineal a la EDP, por tanto se una modificación en EDP Loss ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²
+* se realizo un mapa en 2D, para no ver la montaña, sino como un mapa de calor de la malla al estilo wilteck
 """
