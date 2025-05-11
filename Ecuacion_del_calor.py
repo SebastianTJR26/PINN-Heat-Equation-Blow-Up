@@ -2,14 +2,28 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
+import os
+import random
 
 #Toda operación que lleve el tf, esta ejecutanode en GPU (porque ya CUDA se enlazo con mi grafica NVIDIA y da true)
 #Toda operación con np, esta en CPU
 
-#primer paso, se define como creo mi PINNN, cuantas capaz y neuronas 
+ 
 from keras.saving import register_keras_serializable
 
+#---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# Para Python y NumPy
+os.environ['PYTHONHASHSEED'] = '0' 
+np.random.seed(0)
+
+# Para TensorFlow (semilla global y determinismo en GPU)       #Estas son semillas, lo que buscan es que la EDP deje de varias y cuando se haga el mapa de calor, ya sea el mismo siempre, almenos que se modifiquen parametros como el alpha del oeprador no lineal
+random.seed(0)
+tf.random.set_seed(0)
+os.environ['TF_DETERMINISTIC_OPS'] = '1'
+os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
+
 @register_keras_serializable()  # ¡Esta línea es crucial! 
+#primer paso, se define como creo mi PINNN, cuantas capaz y neuronas
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 class PINN(tf.keras.Model):  
     def __init__(self, layers):
@@ -80,7 +94,7 @@ def EDP_loss(model, x, t, alpha,beta):
         # Las derivadas deben estar dentro del tape, porque TensorFlow está rastreando si se hace bien.
         # Si están fuera, podrían dar None.
 
-    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*u**2)**2)  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²
+    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*u**3)**2)  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²
 
 # Otra forma de hacerlo:
 # u = model(tf.stack([x, t], axis=1))  # tf.stack([x, t], axis=1) y tape.watch([x, t])
@@ -152,7 +166,7 @@ beta = tf.constant(0.1, dtype=tf.float32)
 #(2)defino mi modelo (cuantas capas y que optimizador quiero, usualmente es adam, y el número de epocas que se entrenara)
 model = PINN([20, 20, 20, 1])#la ultima capa siemrpe debe ser una neurona!!
 optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
-epochs = 1000
+epochs = 500
 #...........................................................................................................................................................................................................................................................................
 
 
@@ -221,7 +235,7 @@ ax.plot_surface(X_np, T_np, U_pred_np, cmap='hot')
 ax.set_xlabel('Posición x')
 ax.set_ylabel('Tiempo t')
 ax.set_zlabel('Solución u(x,t)')
-ax.set_title('Solución de la EDP con PINN, con U^2')
+ax.set_title('Solución de la EDP con PINN, con U^3 Fuj')
 
 plt.show()
 
@@ -233,22 +247,44 @@ plt.contourf(X, T, U_pred, levels=100, cmap='inferno')  # Usa 'hot' para refleja
 plt.colorbar(label="Temperatura")
 plt.xlabel("Posición x")
 plt.ylabel("Tiempo t")
-plt.title("Mapa de calor de la solución PINN, con U^2 y operador no lineal e")
+plt.title("Mapa de calor de la solución PINN, con U^3 Fuj y operador no lineal e")
 plt.show()
 
 
 
 #---------------------------------------------------------------------------------------------
 #ESTE ES UN MAPA DE CALOR DE CAPAZ POR CADA NEURONA, PARA VER SU ACTIVACIÓN
-for i, layer in enumerate(model.layers):
-    weights = layer.get_weights()
-    if weights:
-        w = weights[0]  # solo los pesos (sin bias)
-        plt.figure(figsize=(10, 2))
-        plt.title(f'Pesos de la capa {i+1} - shape: {w.shape}')                          #(M)
-        plt.imshow(w, aspect='auto', cmap='coolwarm')
-        plt.colorbar()
-        plt.show()
+respuesta = input("ver activación de las neuronas? (S/n)")
+if respuesta == 'S':
+    for i, layer in enumerate(model.layers):
+        weights = layer.get_weights()
+        if weights:
+            w = weights[0]  # solo los pesos (sin bias)
+            plt.figure(figsize=(10, 2))
+            plt.title(f'Pesos de la capa {i+1} - shape: {w.shape}')                          #(M)
+            plt.imshow(w, aspect='auto', cmap='coolwarm')
+            plt.colorbar()
+            plt.show()
+
+
+
+#---------------------------------------------------------------------------------------------
+# Supongamos que ya tienes:
+# T_vals: vector de tiempos de longitud M
+# U_pred_np: array (M, N) con la solución PINN en la malla (t en filas, x en columnas)
+
+# 1. Defino umbral pequeño, por ejemplo 1% de la amplitud inicial
+epsilon = 0.01 * (U_pred_np.max() - U_pred_np.min())
+
+# 2. Vector de máximos por cada tiempo
+maximos = U_pred_np.max(axis=1)                                               #un ensayo de captura del tiempo en que explota la EDP
+
+# 3. Tiempo inicial de calentamiento
+idx = np.argmax(maximos > (maximos[0] + epsilon))
+t_inicio = T_np[idx, 0]  # como T_np es malla, tomo la columna 0
+
+print(f"Comienza a calentar en t ≈ {t_inicio:.4f}")
+
 
 #NOTAS
 
@@ -287,4 +323,15 @@ versión 4
 *neuronas muy activadas (color rojo intenso, valor positivo alto) neuronas negativas (valor negativo alto, ese valor no significa que la neurona este mal,sino que es un valor inverso que dio en el entrenamiento analogo a la neurona roja, son importantes tambien )
 *neuronas claras(las que estan más cerca a cero, por ambos sentidos, + ó -, estas sin no sirven, no se estan activando)
 *se guardaron tambien no solo los mejores pesos, sino en que época fue y el valor de la función de perdida que dio
+"""
+
+
+
+"""
+versión 5
+
+*Según el Teo de Fujita, la explosión de esta EDP se da para un  exponente p 1<p<=1+2/N, como esta es la ecuación de calor 1D, N=1, realizando la cuenta p<=3, el alpha del u se modifico de esta manera U^3, 
+*se adicionaron semillas que quiere decir que los datos generados son fijos y no va a variar la EDP cuando se vea
+*se copioo un código de captura del tiempo
+*Esto aun es una fase experimental, no estoy seguro si la explosión se esta haciendo de manera correcta, porque variando el p, sigue dando casi lo mismo, fuera del rango (1,3]
 """
