@@ -94,7 +94,7 @@ def EDP_loss(model, x, t, alpha,beta):
         # Las derivadas deben estar dentro del tape, porque TensorFlow está rastreando si se hace bien.
         # Si están fuera, podrían dar None.
 
-    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*u**3)**2)  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²
+    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*u**3)**2)  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  
 
 # Otra forma de hacerlo:
 # u = model(tf.stack([x, t], axis=1))  # tf.stack([x, t], axis=1) y tape.watch([x, t])
@@ -159,21 +159,21 @@ u_boundary = tf.zeros_like(t_boundary, dtype=tf.float32)
 # Coeficiente de difusión del calor (parametro físico)
 alpha = tf.constant(0.01, dtype=tf.float32)
 
-# Coeficiente de difusión del calor (parametro físico)
-beta = tf.constant(0.1, dtype=tf.float32)
+# Coeficiente de difusión del calor (parametro físico)                    #ESTO DE ACÁ, LOS ALPHA Y BETHA ESTAN SIENDO MUY IMPORTANTES, MI BETHA PEQUEÑO NO PERMITIA QUE DETECTARA EL  OP NO LINEAL, TODO SE ESTABA AJUSTANDO ERA A LA EDP SIN TENER ENCUENTA EL OP NO LINEAL
+beta = tf.constant(5.0, dtype=tf.float32)                                 #POR ESO SIEMPRE SALIA LO MISMO, AUNQUE ESTAMOS AUN EN FASE DE PRUEBAS
 #...........................................................................................................................................................................................................................................................................
 
 #(2)defino mi modelo (cuantas capas y que optimizador quiero, usualmente es adam, y el número de epocas que se entrenara)
 model = PINN([20, 20, 20, 1])#la ultima capa siemrpe debe ser una neurona!!
 optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
-epochs = 500
+epochs = 700
 #...........................................................................................................................................................................................................................................................................
 
 
 #(3)ENTRENAMIENTO! (ACTUALIZACIÓN, se adiciona en el código la forma de guardar los mejores pesos entrenados)
 best_epoch = 0  #guardamos la epoca donde mejor fue entrenado el modelo
 best_loss = 50000000.0 #guardamos el función de perdida más baja que dio, para saber cual fue el mejor entrenamiento, comenzamos en un valor muy alto para hacer comparación
-
+registro_intensidad = []
 for epoch in range(epochs):
     with tf.GradientTape() as tape:
          loss_1 = EDP_loss(model, x, t, alpha,beta)
@@ -192,6 +192,17 @@ for epoch in range(epochs):
         best_loss = loss
         best_epoch = epoch
         model.save_weights("mejores_pesos_pinn.weights.h5")        #(P)
+
+    if epoch%100==0:
+        xt = tf.concat([
+        tf.reshape(x, (-1, 1)),
+        tf.reshape(t, (-1, 1))
+        ], axis=1)
+        u_pred = model(xt)                                                  #al parecer, esto me esta diciendo en que época obtuve mi blow-up, tengo que ver si hubo una variación brusca
+        intensidad= tf.reduce_max(tf.abs(u_pred)).numpy()
+        print("intensidad en la epoca ", epoch," :",intensidad)
+
+        
 
     
     print(f"Epoch {epoch}/{epochs},Loss_PINN: {loss}")
@@ -254,7 +265,7 @@ plt.show()
 
 #---------------------------------------------------------------------------------------------
 #ESTE ES UN MAPA DE CALOR DE CAPAZ POR CADA NEURONA, PARA VER SU ACTIVACIÓN
-respuesta = input("ver activación de las neuronas? (S/n)")
+respuesta = input("ver activación de las neuronas? (S/n):")
 if respuesta == 'S':
     for i, layer in enumerate(model.layers):
         weights = layer.get_weights()
@@ -284,6 +295,9 @@ idx = np.argmax(maximos > (maximos[0] + epsilon))
 t_inicio = T_np[idx, 0]  # como T_np es malla, tomo la columna 0
 
 print(f"Comienza a calentar en t ≈ {t_inicio:.4f}")
+
+
+
 
 
 #NOTAS
@@ -330,8 +344,18 @@ versión 4
 """
 versión 5
 
-*Según el Teo de Fujita, la explosión de esta EDP se da para un  exponente p 1<p<=1+2/N, como esta es la ecuación de calor 1D, N=1, realizando la cuenta p<=3, el alpha del u se modifico de esta manera U^3, 
+*Según el Teo de Fujita, la explosión de esta EDP se da para un  exponente p 1<p<=1+2/N, como esta es la ecuación de calor 1D, N=1, realizando la cuenta p<=3, el alpha del u se modifico de esta manera -> U^3, 
 *se adicionaron semillas que quiere decir que los datos generados son fijos y no va a variar la EDP cuando se vea
-*se copioo un código de captura del tiempo
+*se copioo un código de captura del tiempo (no se si es la mejor opción y aun no lo entiendo bien, tal vez en un futuro se modifique o cambie por otro)
 *Esto aun es una fase experimental, no estoy seguro si la explosión se esta haciendo de manera correcta, porque variando el p, sigue dando casi lo mismo, fuera del rango (1,3]
+"""
+
+"""
+versión 6
+
+*Experimentando y cambiando los valores de (α) y (β), estamos notando el blow up de la EDP, aun seguimos en fase de experimentación, el β quedo con un valor de 5.0 para que lo tuviera más encuenta la parte no lineal
+*estamos variando el número de épocas si esto permite ver mejores resultados, por eso se veran diferentes çantidades de épocas en diferenets versiones del código
+*tambien se esta experimentando con los dominios de (x) y (t), testo esta permitiendo ver cambios
+*chatgpt arrojo un código de ver un cambio significativo en la explosión, aunque desconfio un poco de el.
+*como los datos ya son fijos gracias a las semillas, ya tenemos confianza de que las avriaciones de calor es debido a los ajustes de lsom aprametros dichos anteriormente en esta versión, y no porque los datos varien ligeramente como se tenia antes.
 """
