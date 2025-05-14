@@ -94,7 +94,7 @@ def EDP_loss(model, x, t, alpha,beta):
         # Las derivadas deben estar dentro del tape, porque TensorFlow está rastreando si se hace bien.
         # Si están fuera, podrían dar None.
 
-    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*u**2)**2)  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  
+    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*u**3)**2)  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  
 
 # Otra forma de hacerlo:
 # u = model(tf.stack([x, t], axis=1))  # tf.stack([x, t], axis=1) y tape.watch([x, t])
@@ -132,20 +132,20 @@ def Frontera_loss(model,x_boundary,t_boundary,u_boundary):
 #(1)Defino la data
 #...........................................................................................................................................................................................................................................................................
 # Discretización del espacio x en 100 puntos en el intervalo [0,1]
-x = tf.convert_to_tensor(np.linspace(-2, 2, 100), dtype=tf.float32)
+x = tf.convert_to_tensor(np.linspace(0, 30, 100), dtype=tf.float32)
                                                                              #aun necesito rastrearlos conn el type.watch, por alguna razon, no se rastrean bien
 # Discretización del tiempo t en 100 puntos en el intervalo [0,1]
-t = tf.convert_to_tensor(np.linspace(-3, 3, 100), dtype=tf.float32)
+t = tf.convert_to_tensor(np.linspace(0, 50, 100), dtype=tf.float32)
 
 # Puntos iniciales en x (idénticos a x, porque representan la condición inicial en todo el dominio espacial)
-x_initial = tf.convert_to_tensor(np.linspace(-2, 2, 100), dtype=tf.float32)
+x_initial = tf.convert_to_tensor(np.linspace(0, 15, 100), dtype=tf.float32)
 
 # Puntos iniciales en t (todos ceros, porque representan t=0, el instante inicial)
 t_initial = tf.zeros_like(x_initial, dtype=tf.float32)
 
 # Condición inicial u(x,0) = sin(pi * x), valores de u en t=0
 #u_initial = tf.convert_to_tensor(np.sin(np.pi * np.linspace(0, 1, 100)), dtype=tf.float32)
-u_initial = tf.convert_to_tensor(2*np.exp(-1*np.linspace(-1, 1, 100)**2),dtype=tf.float32) #LEONARDO
+u_initial = tf.convert_to_tensor(np.exp(-1*np.linspace(-1, 1, 100)**2),dtype=tf.float32) #LEONARDO
 #u0 = np.where(np.abs(x) <= 1, 1.0, 0.0)
 #u_initial = tf.convert_to_tensor(u0, dtype=tf.float32)
 
