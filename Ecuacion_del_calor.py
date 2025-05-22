@@ -30,7 +30,7 @@ class PINN(tf.keras.Model):
         super(PINN, self).__init__()
 
         # Capas ocultas con activación 'tanh'
-        self.hidden_layers = [tf.keras.layers.Dense(layer, activation='tanh') for layer in layers[:-1]]
+        self.hidden_layers = [tf.keras.layers.Dense(layer, activation='relu') for layer in layers[:-1]]
 
         # Capa de salida con activación None
         self.output_layer = tf.keras.layers.Dense(layers[-1], activation=None)
@@ -94,7 +94,7 @@ def EDP_loss(model, x, t, alpha,beta):
         # Las derivadas deben estar dentro del tape, porque TensorFlow está rastreando si se hace bien.
         # Si están fuera, podrían dar None.
 
-    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*u**3)**2)  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  
+    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*tf.pow(u,3))**2)  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  
 
 # Otra forma de hacerlo:
 # u = model(tf.stack([x, t], axis=1))  # tf.stack([x, t], axis=1) y tape.watch([x, t])
@@ -131,21 +131,38 @@ def Frontera_loss(model,x_boundary,t_boundary,u_boundary):
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #(1)Defino la data
 #...........................................................................................................................................................................................................................................................................
+
+#Parametros fisicos de la EDP
+
+# Amplitud del operador no lineal
+A=3
+
+# Coeficiente de difusión del calor (parametro físico)
+alpha = tf.constant(0.001, dtype=tf.float32)
+
+# Coeficiente de difusión del calor (parametro físico)                     #ESTO DE ACÁ, LOS ALPHA Y BETHA ESTAN SIENDO MUY IMPORTANTES, MI BETHA PEQUEÑO NO PERMITIA QUE DETECTARA EL  OP NO LINEAL, TODO SE ESTABA AJUSTANDO ERA A LA EDP SIN TENER ENCUENTA EL OP NO LINEAL
+beta = tf.constant(2.0, dtype=tf.float32)                                 #POR ESO SIEMPRE SALIA LO MISMO, AUNQUE ESTAMOS AUN EN FASE DE PRUEBAS
+
+# Estimación y ajuste del dominio temporal al blow-up
+T_b_est = A**(-2)               # Estimación teórica del tiempo de blow-up ~ A^{-2}
+t_max = 0.9 * T_b_est           # Dominio temporal en [0, 0.9*T_b_est]
+
 # Discretización del espacio x en 100 puntos en el intervalo [0,1]
-x = tf.convert_to_tensor(np.linspace(0, 30, 100), dtype=tf.float32)
+x = tf.convert_to_tensor(np.linspace(0, 1, 200), dtype=tf.float32)
                                                                              #aun necesito rastrearlos conn el type.watch, por alguna razon, no se rastrean bien
 # Discretización del tiempo t en 100 puntos en el intervalo [0,1]
-t = tf.convert_to_tensor(np.linspace(0, 50, 100), dtype=tf.float32)
+t = tf.convert_to_tensor(np.linspace(0, t_max, 200), dtype=tf.float32)
 
 # Puntos iniciales en x (idénticos a x, porque representan la condición inicial en todo el dominio espacial)
-x_initial = tf.convert_to_tensor(np.linspace(0, 15, 100), dtype=tf.float32)
+#x_initial = tf.convert_to_tensor(np.linspace(0, 1, 100), dtype=tf.float32)
+x_initial = x
 
 # Puntos iniciales en t (todos ceros, porque representan t=0, el instante inicial)
 t_initial = tf.zeros_like(x_initial, dtype=tf.float32)
 
 # Condición inicial u(x,0) = sin(pi * x), valores de u en t=0
 #u_initial = tf.convert_to_tensor(np.sin(np.pi * np.linspace(0, 1, 100)), dtype=tf.float32)
-u_initial = tf.convert_to_tensor(np.exp(-1*np.linspace(-1, 1, 100)**2),dtype=tf.float32) #LEONARDO
+u_initial = tf.convert_to_tensor(A*np.exp(-1*np.linspace(-1, 1, 200)**2),dtype=tf.float32) #LEONARDO
 #u0 = np.where(np.abs(x) <= 1, 1.0, 0.0)
 #u_initial = tf.convert_to_tensor(u0, dtype=tf.float32)
 
@@ -153,29 +170,30 @@ u_initial = tf.convert_to_tensor(np.exp(-1*np.linspace(-1, 1, 100)**2),dtype=tf.
 x_boundary = tf.convert_to_tensor([-2, 2], dtype=tf.float32)
 
 # Valores de tiempo en la frontera (cubre todos los valores de t en [0,1])
-t_boundary = tf.convert_to_tensor(np.linspace(0, 1, 100), dtype=tf.float32)
+t_boundary = tf.convert_to_tensor(np.linspace(0, 1, 200), dtype=tf.float32)
 
 # Condición de frontera: u(0,t) = u(1,t) = 0, esto significa que en los extremos el valor es siempre 0
 u_boundary = tf.zeros_like(t_boundary, dtype=tf.float32)
 
-# Coeficiente de difusión del calor (parametro físico)
-alpha = tf.constant(0.01, dtype=tf.float32)
 
-# Coeficiente de difusión del calor (parametro físico)                    #ESTO DE ACÁ, LOS ALPHA Y BETHA ESTAN SIENDO MUY IMPORTANTES, MI BETHA PEQUEÑO NO PERMITIA QUE DETECTARA EL  OP NO LINEAL, TODO SE ESTABA AJUSTANDO ERA A LA EDP SIN TENER ENCUENTA EL OP NO LINEAL
-beta = tf.constant(2.0, dtype=tf.float32)                                 #POR ESO SIEMPRE SALIA LO MISMO, AUNQUE ESTAMOS AUN EN FASE DE PRUEBAS
+
 #...........................................................................................................................................................................................................................................................................
 
 #(2)defino mi modelo (cuantas capas y que optimizador quiero, usualmente es adam, y el número de epocas que se entrenara)
-model = PINN([20, 20, 20, 1])#la ultima capa siemrpe debe ser una neurona!!
+#model = PINN([20, 20, 20, 1])#la ultima capa siemrpe debe ser una neurona!!
+model = PINN([50, 1])
 optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
-epochs = 700
+epochs = 500
 #...........................................................................................................................................................................................................................................................................
 
 
 #(3)ENTRENAMIENTO! (ACTUALIZACIÓN, se adiciona en el código la forma de guardar los mejores pesos entrenados)
 best_epoch = 0  #guardamos la epoca donde mejor fue entrenado el modelo
 best_loss = 50000000.0 #guardamos el función de perdida más baja que dio, para saber cual fue el mejor entrenamiento, comenzamos en un valor muy alto para hacer comparación
-registro_intensidad = []
+
+w_pde = 10.0  # Prioriza la pérdida de la EDP
+w_ic = 0.1
+w_bc = 0.1
 for epoch in range(epochs):
     with tf.GradientTape() as tape:
          loss_1 = EDP_loss(model, x, t, alpha,beta)
@@ -184,7 +202,7 @@ for epoch in range(epochs):
 
          loss_3 = Frontera_loss(model, x_boundary, t_boundary, u_boundary)
 
-         PINN_loss = loss_1 + loss_2 + loss_3
+         PINN_loss = w_pde*loss_1 + w_ic*loss_2 + w_bc*loss_3
 
     gradients = tape.gradient(PINN_loss, model.trainable_variables)
     optimizer.apply_gradients(zip(gradients, model.trainable_variables))
@@ -373,3 +391,8 @@ versión 7
 """
 
 
+"""
+versión 8
+* x in [0,30] ; t in [0,50]  ;x_init in [0,15] ;U^3; 
+
+"""
