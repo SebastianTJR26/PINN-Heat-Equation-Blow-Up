@@ -33,7 +33,7 @@ class PINN(tf.keras.Model):
         self.hidden_layers = [tf.keras.layers.Dense(layer, activation='relu') for layer in layers[:-1]]
 
         # Capa de salida con activación None
-        self.output_layer = tf.keras.layers.Dense(layers[-1], activation=None)
+        self.output_layer = tf.keras.layers.Dense(layers[-1], activation= None) #None
 
     def call(self, inputs): # Forward propagation
         x = inputs[:, 0:1]  # Extrae la primera columna (posición x)
@@ -141,17 +141,17 @@ A=3
 alpha = tf.constant(0.001, dtype=tf.float32)
 
 # Coeficiente de difusión del calor (parametro físico)                     #ESTO DE ACÁ, LOS ALPHA Y BETHA ESTAN SIENDO MUY IMPORTANTES, MI BETHA PEQUEÑO NO PERMITIA QUE DETECTARA EL  OP NO LINEAL, TODO SE ESTABA AJUSTANDO ERA A LA EDP SIN TENER ENCUENTA EL OP NO LINEAL
-beta = tf.constant(2.0, dtype=tf.float32)                                 #POR ESO SIEMPRE SALIA LO MISMO, AUNQUE ESTAMOS AUN EN FASE DE PRUEBAS
+beta = tf.constant(3.0, dtype=tf.float32)                                 #POR ESO SIEMPRE SALIA LO MISMO, AUNQUE ESTAMOS AUN EN FASE DE PRUEBAS
 
 # Estimación y ajuste del dominio temporal al blow-up
-T_b_est = A**(-2)               # Estimación teórica del tiempo de blow-up ~ A^{-2}
+T_b_est = A**(-2)               # Estimación teórica del tiempo de blow-up ~ A^{-2} (AA)
 t_max = 0.9 * T_b_est           # Dominio temporal en [0, 0.9*T_b_est]
 
-# Discretización del espacio x en 100 puntos en el intervalo [0,1]
-x = tf.convert_to_tensor(np.linspace(0, 1, 200), dtype=tf.float32)
+# Discretización del espacio x en 100 puntos en el intervalo [0,1] ; el valor original era 100, ahora son 200 puntos de vizualisación 
+x = tf.convert_to_tensor(np.linspace(-1, 1, 200), dtype=tf.float32)
                                                                              #aun necesito rastrearlos conn el type.watch, por alguna razon, no se rastrean bien
 # Discretización del tiempo t en 100 puntos en el intervalo [0,1]
-t = tf.convert_to_tensor(np.linspace(0, t_max, 200), dtype=tf.float32)
+t = tf.convert_to_tensor(np.linspace(-1, 1, 200), dtype=tf.float32)
 
 # Puntos iniciales en x (idénticos a x, porque representan la condición inicial en todo el dominio espacial)
 #x_initial = tf.convert_to_tensor(np.linspace(0, 1, 100), dtype=tf.float32)
@@ -167,13 +167,16 @@ u_initial = tf.convert_to_tensor(A*np.exp(-1*np.linspace(-1, 1, 200)**2),dtype=t
 #u_initial = tf.convert_to_tensor(u0, dtype=tf.float32)
 
 # Puntos de la frontera x=0 y x=1 (solo dos valores: 0 y 1, representan los extremos del dominio)
-x_boundary = tf.convert_to_tensor([-2, 2], dtype=tf.float32)
-
+x_boundary = tf.convert_to_tensor(np.linspace(-1, 1, 200), dtype=tf.float32)
+                                                                                   #26/05/2025 Leonardo me pidio cambiar las dondiciones de frontera entre -1 a 1
 # Valores de tiempo en la frontera (cubre todos los valores de t en [0,1])
-t_boundary = tf.convert_to_tensor(np.linspace(0, 1, 200), dtype=tf.float32)
+t_boundary = tf.convert_to_tensor(np.linspace(-1, 1, 200), dtype=tf.float32)
 
 # Condición de frontera: u(0,t) = u(1,t) = 0, esto significa que en los extremos el valor es siempre 0
-u_boundary = tf.zeros_like(t_boundary, dtype=tf.float32)
+#u_boundary = tf.zeros_like(t_boundary, dtype=tf.float32)
+
+#Nueva condición de frontera establecida por el profe Leonardo
+u_boundary = np.exp(-1)*tf.ones_like(t_boundary, dtype=tf.float32)
 
 
 
@@ -183,7 +186,7 @@ u_boundary = tf.zeros_like(t_boundary, dtype=tf.float32)
 #model = PINN([20, 20, 20, 1])#la ultima capa siemrpe debe ser una neurona!!
 model = PINN([50, 1])
 optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
-epochs = 500
+epochs = 1000
 #...........................................................................................................................................................................................................................................................................
 
 
@@ -191,7 +194,7 @@ epochs = 500
 best_epoch = 0  #guardamos la epoca donde mejor fue entrenado el modelo
 best_loss = 50000000.0 #guardamos el función de perdida más baja que dio, para saber cual fue el mejor entrenamiento, comenzamos en un valor muy alto para hacer comparación
 
-w_pde = 10.0  # Prioriza la pérdida de la EDP
+w_pde = 0.8  # Prioriza la pérdida de la EDP
 w_ic = 0.1
 w_bc = 0.1
 for epoch in range(epochs):
@@ -324,6 +327,7 @@ print(f"Comienza a calentar en t ≈ {t_inicio:.4f}")
 
 """
 versión 1
+
 Esta es la primera versión de la EDP de calor que se realizo
 * u_initial es SIN(πx) [0,1]
 * Se genera una malla en 3D despues del entrenamiento "de colores azules"
@@ -334,6 +338,7 @@ EDP loss original ||∂u/∂t - α * ∂²u/∂x²||²
 
 """
 versión 2
+
 * u_initial ahora es e^-x [1,1], ahora converge el entrenamiento mejor
 * La malla 3D ahora tiene colores rojos y amarillos, mostrando la intensidad de donde se ve más el calor , que es en las puntas de la montaña por asi decirlo
 * se le agrego un opeador no lineal a la EDP, por tanto se una modificación en EDP Loss ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²
@@ -343,6 +348,7 @@ versión 2
 
 """
 versión 3
+
 *se ajustaron comentarios que no se hicieron en "EDP original. op no lineal"
 *se adiciono un mapa de calor para ver la activación de las neuronas por capa "OJO ESTO ES DESPUES DEL ENTRENAMIENTO"(M)
 * en la proxima versión se adiconaran los comentarios de la (versión 1), más un comentario donde no estaba el operador no lineal
@@ -393,6 +399,31 @@ versión 7
 
 """
 versión 8
+
 * x in [0,30] ; t in [0,50]  ;x_init in [0,15] ;U^3; 
 
+"""
+
+
+"""
+versión 9
+
+*despues de muchas experimentaciones, tenemos devuelta a "x" y "t" en el dominio [0,1]
+*La Ecuación ya ve un calentamiento en este dominio, se adiciono una variable "A" para la amplitud del operador no lineal de la exponencial
+*Se adicionaron 3 pesos "w" a las funciones de perdida de EDP, Iniciales, Frontera, donde tiene más peso la función de perdida EDP
+*se cambio la función de activación "tanh" por "relu"; 
+*tanh satura en ±1, limitando la salida y frenando crecimientos fuertes. relu no satura para valores positivos, dejando que la red genere números grandes y capture mejor el blow-up.
+*Tebemos ahora un ajuste de estimación en el dominio del blow-up (AA), tengo que estudiar más que hacen esas variables
+*esperemos obtener un mejor blow-up despues
+"""
+
+"""
+versión 10
+*El Profesor Leonardo sugirio los siguientes cambios
+*Si la condición inicial esta entre [-1,1], por qué no ajusto mis variables a ese entorno?
+*En las condiciones de frontera, ya no estan registringidas a "0". Ahora estan por una condicion exponencial U(-1,t) y U(1,t)
+*Alterando las épocas y el learning rate, los cambios del calor si aumentan más, la mejor es el modelo primero, aunque dejare el segundo
+*Se quito la cota sugerida por ChatGPT
+*Hasta ahora, la activación con "relu" es la que capta más datos
+*Recuerda ahora variar los modelos y las épocas para obtener más calor
 """
