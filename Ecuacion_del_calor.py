@@ -30,10 +30,10 @@ class PINN(tf.keras.Model):
         super(PINN, self).__init__()
 
         # Capas ocultas con activación 'tanh'
-        self.hidden_layers = [tf.keras.layers.Dense(layer, activation='relu') for layer in layers[:-1]]
+        self.hidden_layers = [tf.keras.layers.Dense(layer, activation='tanh') for layer in layers[:-1]]
 
         # Capa de salida con activación None
-        self.output_layer = tf.keras.layers.Dense(layers[-1], activation= None) #None
+        self.output_layer = tf.keras.layers.Dense(layers[-1], activation= 'relu') #None
 
     def call(self, inputs): # Forward propagation
         x = inputs[:, 0:1]  # Extrae la primera columna (posición x)
@@ -144,8 +144,8 @@ alpha = tf.constant(0.001, dtype=tf.float32)
 beta = tf.constant(3.0, dtype=tf.float32)                                 #POR ESO SIEMPRE SALIA LO MISMO, AUNQUE ESTAMOS AUN EN FASE DE PRUEBAS
 
 # Estimación y ajuste del dominio temporal al blow-up
-T_b_est = A**(-2)               # Estimación teórica del tiempo de blow-up ~ A^{-2} (AA)
-t_max = 0.9 * T_b_est           # Dominio temporal en [0, 0.9*T_b_est]
+#T_b_est = A**(-2)               # Estimación teórica del tiempo de blow-up ~ A^{-2} (AA) (Esto ya no hace aprte del código)
+#t_max = 0.9 * T_b_est           # Dominio temporal en [0, 0.9*T_b_est]
 
 # Discretización del espacio x en 100 puntos en el intervalo [0,1] ; el valor original era 100, ahora son 200 puntos de vizualisación 
 x = tf.convert_to_tensor(np.linspace(-1, 1, 200), dtype=tf.float32)
@@ -183,8 +183,8 @@ u_boundary = np.exp(-1)*tf.ones_like(t_boundary, dtype=tf.float32)
 #...........................................................................................................................................................................................................................................................................
 
 #(2)defino mi modelo (cuantas capas y que optimizador quiero, usualmente es adam, y el número de epocas que se entrenara)
-#model = PINN([20, 20, 20, 1])#la ultima capa siemrpe debe ser una neurona!!
-model = PINN([50, 1])
+model = PINN([20, 20, 20, 1])#la ultima capa siemrpe debe ser una neurona!!
+#model = PINN([50, 1])
 optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
 epochs = 1000
 #...........................................................................................................................................................................................................................................................................
@@ -426,4 +426,13 @@ versión 10
 *Se quito la cota sugerida por ChatGPT
 *Hasta ahora, la activación con "relu" es la que capta más datos
 *Recuerda ahora variar los modelos y las épocas para obtener más calor
+"""
+
+"""
+versión 11
+*Se implementaron nuevos cambios sugeridos por el profesor Leonardo
+*Las activaciones entre las capaz profundas son ahora tanh de nuevo, pero al salida es una relu, esto se hara para captar más información de la EDP
+*Me indica que la frontera de t deberia ser entre [0,1], pero estoy teniendo mejores resultados en [-1,1], al igual que la amplitud A, me sugiere quitarla, pero la temperatura disminuye si hago eso
+*La temperatura esta aumentando considerablemente en cada versión
+
 """
