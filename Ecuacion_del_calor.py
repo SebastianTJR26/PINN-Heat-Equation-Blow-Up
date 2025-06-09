@@ -94,7 +94,7 @@ def EDP_loss(model, x, t, alpha,beta):
         # Las derivadas deben estar dentro del tape, porque TensorFlow está rastreando si se hace bien.
         # Si están fuera, podrían dar None.
 
-    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*tf.pow(u,3))**2)  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  
+    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*tf.pow(u,2.5))**2)  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  
 
 # Otra forma de hacerlo:
 # u = model(tf.stack([x, t], axis=1))  # tf.stack([x, t], axis=1) y tape.watch([x, t])
@@ -434,5 +434,7 @@ versión 11
 *Las activaciones entre las capaz profundas son ahora tanh de nuevo, pero al salida es una relu, esto se hara para captar más información de la EDP
 *Me indica que la frontera de t deberia ser entre [0,1], pero estoy teniendo mejores resultados en [-1,1], al igual que la amplitud A, me sugiere quitarla, pero la temperatura disminuye si hago eso
 *La temperatura esta aumentando considerablemente en cada versión
+*Queda pendiente dibujar las funciones de eprdida de loss_1, loss_2 y loss_3
 
 """
+#el exponente esta en 2.5, no se a metido el cambio en el git
