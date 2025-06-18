@@ -197,6 +197,11 @@ best_loss = 50000000.0 #guardamos el función de perdida más baja que dio, para
 w_pde = 0.8  # Prioriza la pérdida de la EDP
 w_ic = 0.1
 w_bc = 0.1
+
+History_loss_1 = []
+History_loss_2 = []
+History_loss_3 = []
+
 for epoch in range(epochs):
     with tf.GradientTape() as tape:
          loss_1 = EDP_loss(model, x, t, alpha,beta)
@@ -204,6 +209,12 @@ for epoch in range(epochs):
          loss_2 = Valores_Iniciales_loss(model, x_initial, t_initial, u_initial)
 
          loss_3 = Frontera_loss(model, x_boundary, t_boundary, u_boundary)
+
+         History_loss_1.append(loss_1)
+
+         History_loss_2.append(loss_2)
+
+         History_loss_3.append(loss_3)
 
          PINN_loss = w_pde*loss_1 + w_ic*loss_2 + w_bc*loss_3
 
@@ -320,8 +331,28 @@ t_inicio = T_np[idx, 0]  # como T_np es malla, tomo la columna 0
 print(f"Comienza a calentar en t ≈ {t_inicio:.4f}")
 
 
+#---------------------------------------------------------------------------------------------
+#GRAFICAS FUNCIONES DE PERDIDA
+#Loss en EDP
+plt.plot(History_loss_1,color='blue')
+plt.title("Pérdida por época en la EDP")
+plt.xlabel("Época")
+plt.ylabel("Pérdida")
+plt.show()
 
+#Loss en EDP
+plt.plot(History_loss_2,color='orange')
+plt.title("Pérdida por época en los valores iniciales")
+plt.xlabel("Época")
+plt.ylabel("Pérdida")
+plt.show()
 
+#Loss en EDP
+plt.plot(History_loss_3,color='green')
+plt.title("Pérdida por época en la frontera")
+plt.xlabel("Época")
+plt.ylabel("Pérdida")
+plt.show()
 
 #NOTAS
 
@@ -445,4 +476,11 @@ versión 12
 
 """
 
+
+"""
+versión 13
+*Se hicieron 3 arreglos para capturar las funciones de perdida (loss_1, loss_2, loss_3), para posteriormente plotearlas
+*Hasta momento en mi PINN, la que más predomina es loss_1
+
+"""
 
