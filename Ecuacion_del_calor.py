@@ -438,3 +438,11 @@ versión 11
 
 """
 #el exponente esta en 2.5, no se a metido el cambio en el git
+
+"""
+versión 12
+*Se a incluido la versión del exponente 2.5, este es el ejemplo que más se adecua a lo que indica el profesor Leonardo y por el momento ya no haremos más cambios en el aumento del blow-up
+
+"""
+
+
