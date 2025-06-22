@@ -183,9 +183,10 @@ u_boundary = np.exp(-1)*tf.ones_like(t_boundary, dtype=tf.float32)
 #...........................................................................................................................................................................................................................................................................
 
 #(2)defino mi modelo (cuantas capas y que optimizador quiero, usualmente es adam, y el número de epocas que se entrenara)
-#model = PINN([20, 20, 20, 1])#la ultima capa siemrpe debe ser una neurona!!
-model = PINN([50,50, 1])
-optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
+#model = PINN([20, 20, 20, 1])#la ultima capa siemrpe debe ser una neurona!! (1)
+#model = PINN([50,25, 1]) #mejor explosión (2)
+model = PINN([100,50,25, 1]) #sin el 25 da más temperatura, pero menos que el modelo anterior, y alborota más la fcn de perdida (3)
+optimizer = tf.keras.optimizers.Adam(learning_rate=0.01) #(4)
 epochs = 1000
 #...........................................................................................................................................................................................................................................................................
 
@@ -486,5 +487,13 @@ versión 13
 
 """
 versión 14
-*Se encontro una mejor explosión con la red [50,50,1], llegando a 3 , tal vez el resultado de suavisar la función de perdida este en el número de neuronas y capaz
+*Se encontro una mejor explosión con la red [50,50,1], llegando a 3 , tal vez el resultado de suavisar la función de perdida este en el número de neuronas y capas
+
+"""
+
+"""
+versión 15
+*Tenemos Ahora 4 diferentes arquitecturas de capaz y neuronas en 4 modelos, algunas dan más tempetatura, como (3), pero la fcn de perdida en edp sigue alborotada
+*en (4) logramos desender la fcn de eprdida, pero con una temperatura no tan fuerte, pero muy cerca de 3, aunque al quitarle la penultima capa aumenta T, pero se alborota de nuevo la fcn 
+
 """
