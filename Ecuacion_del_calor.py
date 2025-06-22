@@ -30,10 +30,10 @@ class PINN(tf.keras.Model):
         super(PINN, self).__init__()
 
         # Capas ocultas con activación 'tanh'
-        self.hidden_layers = [tf.keras.layers.Dense(layer, activation='tanh') for layer in layers[:-1]]
+        self.hidden_layers = [tf.keras.layers.Dense(layer, activation='tanh') for layer in layers[:-1]] #original tanh
 
         # Capa de salida con activación None
-        self.output_layer = tf.keras.layers.Dense(layers[-1], activation= 'relu') #None
+        self.output_layer = tf.keras.layers.Dense(layers[-1], activation= 'relu') #None original relu
 
     def call(self, inputs): # Forward propagation
         x = inputs[:, 0:1]  # Extrae la primera columna (posición x)
@@ -183,8 +183,8 @@ u_boundary = np.exp(-1)*tf.ones_like(t_boundary, dtype=tf.float32)
 #...........................................................................................................................................................................................................................................................................
 
 #(2)defino mi modelo (cuantas capas y que optimizador quiero, usualmente es adam, y el número de epocas que se entrenara)
-model = PINN([20, 20, 20, 1])#la ultima capa siemrpe debe ser una neurona!!
-#model = PINN([50, 1])
+#model = PINN([20, 20, 20, 1])#la ultima capa siemrpe debe ser una neurona!!
+model = PINN([50,50, 1])
 optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
 epochs = 1000
 #...........................................................................................................................................................................................................................................................................
@@ -484,3 +484,7 @@ versión 13
 
 """
 
+"""
+versión 14
+*Se encontro una mejor explosión con la red [50,50,1], llegando a 3 , tal vez el resultado de suavisar la función de perdida este en el número de neuronas y capaz
+"""
