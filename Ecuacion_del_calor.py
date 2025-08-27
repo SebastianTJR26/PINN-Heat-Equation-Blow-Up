@@ -94,7 +94,7 @@ def EDP_loss(model, x, t, alpha,beta):
         # Las derivadas deben estar dentro del tape, porque TensorFlow está rastreando si se hace bien.
         # Si están fuera, podrían dar None.
 
-    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*tf.pow(u,2.5))**2)  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  
+    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*tf.pow(u,2))**2)  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  
 
 # Otra forma de hacerlo:
 # u = model(tf.stack([x, t], axis=1))  # tf.stack([x, t], axis=1) y tape.watch([x, t])
@@ -132,51 +132,48 @@ def Frontera_loss(model,x_boundary,t_boundary,u_boundary):
 #(1)Defino la data
 #...........................................................................................................................................................................................................................................................................
 
+
+
 #Parametros fisicos de la EDP
-
-# Amplitud del operador no lineal
-A=3
-
+Nx=200
+dt=0.001
+Nt=200
+ 
 # Coeficiente de difusión del calor (parametro físico)
-alpha = tf.constant(0.001, dtype=tf.float32)
-
+alpha = tf.constant(1.0, dtype=tf.float32)
+ 
 # Coeficiente de difusión del calor (parametro físico)                     #ESTO DE ACÁ, LOS ALPHA Y BETHA ESTAN SIENDO MUY IMPORTANTES, MI BETHA PEQUEÑO NO PERMITIA QUE DETECTARA EL  OP NO LINEAL, TODO SE ESTABA AJUSTANDO ERA A LA EDP SIN TENER ENCUENTA EL OP NO LINEAL
-beta = tf.constant(3.0, dtype=tf.float32)                                 #POR ESO SIEMPRE SALIA LO MISMO, AUNQUE ESTAMOS AUN EN FASE DE PRUEBAS
-
-# Estimación y ajuste del dominio temporal al blow-up
-#T_b_est = A**(-2)               # Estimación teórica del tiempo de blow-up ~ A^{-2} (AA) (Esto ya no hace aprte del código)
-#t_max = 0.9 * T_b_est           # Dominio temporal en [0, 0.9*T_b_est]
-
-# Discretización del espacio x en 100 puntos en el intervalo [0,1] ; el valor original era 100, ahora son 200 puntos de vizualisación 
-x = tf.convert_to_tensor(np.linspace(-1, 1, 200), dtype=tf.float32)
+beta = tf.constant(1.0, dtype=tf.float32)                                 #POR ESO SIEMPRE SALIA LO MISMO, AUNQUE ESTAMOS AUN EN FASE DE PRUEBAS
+ 
+ 
+# Discretización del espacio x en 100 puntos en el intervalo [0,1] ; el valor original era 100, ahora son 200 puntos de vizualisación
+x = tf.convert_to_tensor(np.linspace(-1, 1, Nx), dtype=tf.float32)
                                                                              #aun necesito rastrearlos conn el type.watch, por alguna razon, no se rastrean bien
 # Discretización del tiempo t en 100 puntos en el intervalo [0,1]
-t = tf.convert_to_tensor(np.linspace(-1, 1, 200), dtype=tf.float32)
-
+t = tf.convert_to_tensor(np.linspace(0, dt*Nt, Nt), dtype=tf.float32)
+ 
 # Puntos iniciales en x (idénticos a x, porque representan la condición inicial en todo el dominio espacial)
 #x_initial = tf.convert_to_tensor(np.linspace(0, 1, 100), dtype=tf.float32)
 x_initial = x
-
+ 
 # Puntos iniciales en t (todos ceros, porque representan t=0, el instante inicial)
 t_initial = tf.zeros_like(x_initial, dtype=tf.float32)
-
+ 
 # Condición inicial u(x,0) = sin(pi * x), valores de u en t=0
 #u_initial = tf.convert_to_tensor(np.sin(np.pi * np.linspace(0, 1, 100)), dtype=tf.float32)
-u_initial = tf.convert_to_tensor(A*np.exp(-1*np.linspace(-1, 1, 200)**2),dtype=tf.float32) #LEONARDO
+u_initial = tf.convert_to_tensor(5*(1-np.linspace(-1, 1, Nx)**2),dtype=tf.float32) #LEONARDO
 #u0 = np.where(np.abs(x) <= 1, 1.0, 0.0)
 #u_initial = tf.convert_to_tensor(u0, dtype=tf.float32)
-
+ 
 # Puntos de la frontera x=0 y x=1 (solo dos valores: 0 y 1, representan los extremos del dominio)
-x_boundary = tf.convert_to_tensor(np.linspace(-1, 1, 200), dtype=tf.float32)
+x_boundary = tf.convert_to_tensor(np.linspace(-1, 1, Nx), dtype=tf.float32)
                                                                                    #26/05/2025 Leonardo me pidio cambiar las dondiciones de frontera entre -1 a 1
 # Valores de tiempo en la frontera (cubre todos los valores de t en [0,1])
-t_boundary = tf.convert_to_tensor(np.linspace(-1, 1, 200), dtype=tf.float32)
-
+t_boundary = tf.convert_to_tensor(np.linspace(0, 1, Nt), dtype=tf.float32)
+ 
 # Condición de frontera: u(0,t) = u(1,t) = 0, esto significa que en los extremos el valor es siempre 0
-#u_boundary = tf.zeros_like(t_boundary, dtype=tf.float32)
+u_boundary = 5*tf.ones_like(t_boundary, dtype=tf.float32)
 
-#Nueva condición de frontera establecida por el profe Leonardo
-u_boundary = np.exp(-1)*tf.ones_like(t_boundary, dtype=tf.float32)
 
 
 
@@ -184,10 +181,11 @@ u_boundary = np.exp(-1)*tf.ones_like(t_boundary, dtype=tf.float32)
 
 #(2)defino mi modelo (cuantas capas y que optimizador quiero, usualmente es adam, y el número de epocas que se entrenara)
 #model = PINN([20, 20, 20, 1])#la ultima capa siemrpe debe ser una neurona!! (1)
-#model = PINN([50,25, 1]) #mejor explosión (2)
-model = PINN([100,50,25, 1]) #sin el 25 da más temperatura, pero menos que el modelo anterior, y alborota más la fcn de perdida (3)
+model = PINN([50,25, 1]) #mejor explosión (2)
+#model = PINN([100,50,25, 1]) #sin el 25 da más temperatura, pero menos que el modelo anterior, y alborota más la fcn de perdida (3)
+#model = PINN([50,1]) 
 optimizer = tf.keras.optimizers.Adam(learning_rate=0.01) #(4)
-epochs = 1000
+epochs = 2000
 #...........................................................................................................................................................................................................................................................................
 
 
@@ -195,9 +193,9 @@ epochs = 1000
 best_epoch = 0  #guardamos la epoca donde mejor fue entrenado el modelo
 best_loss = 50000000.0 #guardamos el función de perdida más baja que dio, para saber cual fue el mejor entrenamiento, comenzamos en un valor muy alto para hacer comparación
 
-w_pde = 0.8  # Prioriza la pérdida de la EDP
-w_ic = 0.1
-w_bc = 0.1
+w_pde = 0.6  # Prioriza la pérdida de la EDP
+w_ic = 0.2
+w_bc = 0.2
 
 History_loss_1 = []
 History_loss_2 = []
@@ -494,6 +492,21 @@ versión 14
 """
 versión 15
 *Tenemos Ahora 4 diferentes arquitecturas de capaz y neuronas en 4 modelos, algunas dan más tempetatura, como (3), pero la fcn de perdida en edp sigue alborotada
-*en (4) logramos desender la fcn de eprdida, pero con una temperatura no tan fuerte, pero muy cerca de 3, aunque al quitarle la penultima capa aumenta T, pero se alborota de nuevo la fcn 
+*en (4) logramos desender la fcn de perdida, pero con una temperatura no tan fuerte, pero muy cerca de 3, aunque al quitarle la penultima capa aumenta T, pero se alborota de nuevo la fcn 
+
+"""
+
+
+"""
+versión 16
+
+*Se cambiaron los datos por todas las condiciones del articulo "On Blow-up Time and Rate Of The Numerical Solutions of The Semilinear Heat Equation with Reaction Term"
+*Se añadieron unas condiciones al t_initial para que coincida con el u_0 , esto fue con ayuda del profesor Leonardo
+*Los pesos estan priorizados del modo que tenga más encuenta la PDE (SI TENEMOS UNA TEMPERATURA MAYOR A LA QUE SE HABIA REGISTRADO)
+*Esta pendiente modificar una forma de hacer más sencilla la arquitectura de la red, en donde pueda intercalar funciones de perdida entre las capaz, cambiar el learnin rate en determinadas épcoas, y añadir el valor númerico  a la fcn residual->
+*-> de perdia de la PDE loss_pde para ver como crece más, esto es sugerencia del profesor leonardo y debo ver el código online que tiene para ver como es
+*Debo tratar de indpendicar la maya de puntos, ie que Nx sea diferente de Nt, porque python no me lo permite
+
+
 
 """
