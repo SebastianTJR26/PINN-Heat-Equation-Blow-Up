@@ -133,9 +133,9 @@ def Frontera_loss(model,x_boundary,t_boundary,u_boundary):
 #...........................................................................................................................................................................................................................................................................
 
 #Parametros fisicos de la EDP
-Nx=200
+Nx=300
 dt=0.001
-Nt=200
+Nt=300
 
 
  
@@ -471,6 +471,7 @@ versión 9
 
 """
 versión 10
+
 *El Profesor Leonardo sugirio los siguientes cambios
 *Si la condición inicial esta entre [-1,1], por qué no ajusto mis variables a ese entorno?
 *En las condiciones de frontera, ya no estan registringidas a "0". Ahora estan por una condicion exponencial U(-1,t) y U(1,t)
@@ -482,6 +483,7 @@ versión 10
 
 """
 versión 11
+
 *Se implementaron nuevos cambios sugeridos por el profesor Leonardo
 *Las activaciones entre las capaz profundas son ahora tanh de nuevo, pero al salida es una relu, esto se hara para captar más información de la EDP
 *Me indica que la frontera de t deberia ser entre [0,1], pero estoy teniendo mejores resultados en [-1,1], al igual que la amplitud A, me sugiere quitarla, pero la temperatura disminuye si hago eso
@@ -493,6 +495,7 @@ versión 11
 
 """
 versión 12
+
 *Se a incluido la versión del exponente 2.5, este es el ejemplo que más se adecua a lo que indica el profesor Leonardo y por el momento ya no haremos más cambios en el aumento del blow-up
 
 """
@@ -500,6 +503,7 @@ versión 12
 
 """
 versión 13
+
 *Se hicieron 3 arreglos para capturar las funciones de perdida (loss_1, loss_2, loss_3), para posteriormente plotearlas
 *Hasta momento en mi PINN, la que más predomina es loss_1
 
@@ -507,12 +511,14 @@ versión 13
 
 """
 versión 14
+
 *Se encontro una mejor explosión con la red [50,50,1], llegando a 3 , tal vez el resultado de suavisar la función de perdida este en el número de neuronas y capas
 
 """
 
 """
 versión 15
+
 *Tenemos Ahora 4 diferentes arquitecturas de capaz y neuronas en 4 modelos, algunas dan más tempetatura, como (3), pero la fcn de perdida en edp sigue alborotada
 *en (4) logramos desender la fcn de perdida, pero con una temperatura no tan fuerte, pero muy cerca de 3, aunque al quitarle la penultima capa aumenta T, pero se alborota de nuevo la fcn 
 
@@ -536,9 +542,20 @@ versión 16
 
 """
 versión 17
+
 *Se adiciono a loss_pde n/(1+tf.norm(u, ord=2) con n>=10 para que crezca más, se nota que el cambio de temperatura aumenta
 *El learning rate establecido al inico es de 5e-4
 *En la época 2400 cambiamos el learning rate a 5e-5 porque ya se estaba estancando la fcn de perdida
 *Con Nx=Nt=200 alcanza una temperatura de 5.7 hasta la época 3000, de hay para adelante,a si le coloque 6000 épocas se queda en 5.46, debe ser porque empieza a difundir la temperatura en la malla, es una hipotesis
+
+"""
+
+
+
+"""
+versión 18
+
+*Con Nx=Nt=200 sigue alcanzando una temperatura de 5.7, pero la fcn de perdida disminuto más, la total, aunque en los valores iniciales enloquecio un poco
+*El n/(1+tf.norm(u, ord=2) definido tanto en esta versión como en la 17 era n=100, se me olvido incluir ese pequeño comentario
 
 """
