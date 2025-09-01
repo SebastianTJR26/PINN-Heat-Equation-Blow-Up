@@ -94,7 +94,7 @@ def EDP_loss(model, x, t, alpha,beta):
         # Las derivadas deben estar dentro del tape, porque TensorFlow está rastreando si se hace bien.
         # Si están fuera, podrían dar None.
 
-    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*tf.pow(u,2))**2+100/(1+tf.norm(u, ord=2)))  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  
+    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*tf.pow(u,2))**2+1000/(1+tf.norm(u, ord=2)))  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  
 
 # Otra forma de hacerlo:
 # u = model(tf.stack([x, t], axis=1))  # tf.stack([x, t], axis=1) y tape.watch([x, t])
@@ -557,5 +557,13 @@ versión 18
 
 *Con Nx=Nt=200 sigue alcanzando una temperatura de 5.7, pero la fcn de perdida disminuto más, la total, aunque en los valores iniciales enloquecio un poco
 *El n/(1+tf.norm(u, ord=2) definido tanto en esta versión como en la 17 era n=100, se me olvido incluir ese pequeño comentario
+
+"""
+
+
+"""
+versión 19
+
+*Con n/(1+tf.norm(u, ord=2) n=1000 llegamos a 6!, la fcn de perdida baja considerablemente,s e ve mejor la total, pero la de los valores inciales esta creciendo mucho!
 
 """
