@@ -94,7 +94,7 @@ def EDP_loss(model, x, t, alpha,beta):
         # Las derivadas deben estar dentro del tape, porque TensorFlow está rastreando si se hace bien.
         # Si están fuera, podrían dar None.
 
-    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*tf.pow(u,2))**2)  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  
+    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*tf.pow(u,2))**2+100/(1+tf.norm(u, ord=2)))  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  
 
 # Otra forma de hacerlo:
 # u = model(tf.stack([x, t], axis=1))  # tf.stack([x, t], axis=1) y tape.watch([x, t])
@@ -132,12 +132,12 @@ def Frontera_loss(model,x_boundary,t_boundary,u_boundary):
 #(1)Defino la data
 #...........................................................................................................................................................................................................................................................................
 
-
-
 #Parametros fisicos de la EDP
 Nx=200
 dt=0.001
 Nt=200
+
+
  
 # Coeficiente de difusión del calor (parametro físico)
 alpha = tf.constant(1.0, dtype=tf.float32)
@@ -158,7 +158,7 @@ x_initial = x
  
 # Puntos iniciales en t (todos ceros, porque representan t=0, el instante inicial)
 t_initial = tf.zeros_like(x_initial, dtype=tf.float32)
- 
+#t_initial = t 
 # Condición inicial u(x,0) = sin(pi * x), valores de u en t=0
 #u_initial = tf.convert_to_tensor(np.sin(np.pi * np.linspace(0, 1, 100)), dtype=tf.float32)
 u_initial = tf.convert_to_tensor(5*(1-np.linspace(-1, 1, Nx)**2),dtype=tf.float32) #LEONARDO
@@ -181,11 +181,12 @@ u_boundary = 5*tf.ones_like(t_boundary, dtype=tf.float32)
 
 #(2)defino mi modelo (cuantas capas y que optimizador quiero, usualmente es adam, y el número de epocas que se entrenara)
 #model = PINN([20, 20, 20, 1])#la ultima capa siemrpe debe ser una neurona!! (1)
-model = PINN([50,25, 1]) #mejor explosión (2)
+#model = PINN([50,25, 1]) #mejor explosión (2)
+model = PINN([10, 15, 20, 25,30, 1])
 #model = PINN([100,50,25, 1]) #sin el 25 da más temperatura, pero menos que el modelo anterior, y alborota más la fcn de perdida (3)
 #model = PINN([50,1]) 
-optimizer = tf.keras.optimizers.Adam(learning_rate=0.01) #(4)
-epochs = 2000
+optimizer = tf.keras.optimizers.Adam(learning_rate=5e-4) #(4)
+epochs = 3000
 #...........................................................................................................................................................................................................................................................................
 
 
@@ -200,26 +201,41 @@ w_bc = 0.2
 History_loss_1 = []
 History_loss_2 = []
 History_loss_3 = []
+History_total_loss= []
 
 for epoch in range(epochs):
+
     with tf.GradientTape() as tape:
-         loss_1 = EDP_loss(model, x, t, alpha,beta)
 
-         loss_2 = Valores_Iniciales_loss(model, x_initial, t_initial, u_initial)
+        if epoch == 2400:
+            optimizer.learning_rate.assign(5e-5)
 
-         loss_3 = Frontera_loss(model, x_boundary, t_boundary, u_boundary)
+        #elif epoch == 2000:
+        #    optimizer.learning_rate.assign(0.00001)
 
-         History_loss_1.append(loss_1)
+        #elif epoch == 3000:
+        #    optimizer.learning_rate.assign(0.000001)       
 
-         History_loss_2.append(loss_2)
 
-         History_loss_3.append(loss_3)
+        loss_1 = EDP_loss(model, x, t, alpha,beta)
 
-         PINN_loss = w_pde*loss_1 + w_ic*loss_2 + w_bc*loss_3
+        loss_2 = Valores_Iniciales_loss(model, x_initial, t_initial, u_initial)
 
-    gradients = tape.gradient(PINN_loss, model.trainable_variables)
-    optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-    loss = PINN_loss.numpy()
+        loss_3 = Frontera_loss(model, x_boundary, t_boundary, u_boundary)
+
+        History_loss_1.append(loss_1)
+
+        History_loss_2.append(loss_2)
+
+        History_loss_3.append(loss_3)
+
+        PINN_loss = w_pde*loss_1 + w_ic*loss_2 + w_bc*loss_3
+
+        History_total_loss.append(PINN_loss.numpy())  # Almacenar la pérdida total
+
+        gradients = tape.gradient(PINN_loss, model.trainable_variables)
+        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+        loss = PINN_loss.numpy()
     
     if  loss < best_loss: #si encontro una función de perdida donde aprendio mejor (redujo más), guarde cuanto fue, en que época y guarde esos pesos que fueron los mejroes entrenados
         best_loss = loss
@@ -238,7 +254,7 @@ for epoch in range(epochs):
         
 
     
-    print(f"Epoch {epoch}/{epochs},Loss_PINN: {loss}")
+    print(f"Epoch {epoch}/{epochs},Loss_PINN: {loss:.5f}") 
 
 print("holaa")
 print("mejor epoca de entrenamiento:", best_epoch)
@@ -291,7 +307,7 @@ plt.contourf(X, T, U_pred, levels=100, cmap='inferno')  # Usa 'hot' para refleja
 plt.colorbar(label="Temperatura")
 plt.xlabel("Posición x")
 plt.ylabel("Tiempo t")
-plt.title("Mapa de calor de la solución PINN, con U^3 Fuj y operador no lineal e")
+plt.title("Mapa de calor de la solución PINN, con U^2 op no lineal ARTICULO")
 plt.show()
 
 
@@ -339,20 +355,26 @@ plt.xlabel("Época")
 plt.ylabel("Pérdida")
 plt.show()
 
-#Loss en EDP
+#Loss en valores iniciales
 plt.plot(History_loss_2,color='orange')
 plt.title("Pérdida por época en los valores iniciales")
 plt.xlabel("Época")
 plt.ylabel("Pérdida")
 plt.show()
 
-#Loss en EDP
+#Loss en frontera
 plt.plot(History_loss_3,color='green')
 plt.title("Pérdida por época en la frontera")
 plt.xlabel("Época")
 plt.ylabel("Pérdida")
 plt.show()
 
+#Loss TOTAL
+plt.plot(History_total_loss,color='red')
+plt.title("Pérdida por época TOTAL")
+plt.xlabel("Época")
+plt.ylabel("Pérdida")
+plt.show()
 #NOTAS
 
 """
@@ -503,10 +525,20 @@ versión 16
 *Se cambiaron los datos por todas las condiciones del articulo "On Blow-up Time and Rate Of The Numerical Solutions of The Semilinear Heat Equation with Reaction Term"
 *Se añadieron unas condiciones al t_initial para que coincida con el u_0 , esto fue con ayuda del profesor Leonardo
 *Los pesos estan priorizados del modo que tenga más encuenta la PDE (SI TENEMOS UNA TEMPERATURA MAYOR A LA QUE SE HABIA REGISTRADO)
-*Esta pendiente modificar una forma de hacer más sencilla la arquitectura de la red, en donde pueda intercalar funciones de perdida entre las capaz, cambiar el learnin rate en determinadas épcoas, y añadir el valor númerico  a la fcn residual->
+*Esta pendiente modificar una forma de hacer más sencilla la arquitectura de la red, en donde pueda intercalar funciones de perdida entre las capaz, cambiar el learning rate en determinadas épcoas, y añadir el valor númerico  a la fcn residual->
 *-> de perdia de la PDE loss_pde para ver como crece más, esto es sugerencia del profesor leonardo y debo ver el código online que tiene para ver como es
 *Debo tratar de indpendicar la maya de puntos, ie que Nx sea diferente de Nt, porque python no me lo permite
 
 
+
+"""
+
+
+"""
+versión 17
+*Se adiciono a loss_pde n/(1+tf.norm(u, ord=2) con n>=10 para que crezca más, se nota que el cambio de temperatura aumenta
+*El learning rate establecido al inico es de 5e-4
+*En la época 2400 cambiamos el learning rate a 5e-5 porque ya se estaba estancando la fcn de perdida
+*Con Nx=Nt=200 alcanza una temperatura de 5.7 hasta la época 3000, de hay para adelante,a si le coloque 6000 épocas se queda en 5.46, debe ser porque empieza a difundir la temperatura en la malla, es una hipotesis
 
 """
