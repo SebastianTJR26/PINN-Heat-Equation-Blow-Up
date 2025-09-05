@@ -94,8 +94,8 @@ def EDP_loss(model, x, t, alpha,beta):
         # Las derivadas deben estar dentro del tape, porque TensorFlow está rastreando si se hace bien.
         # Si están fuera, podrían dar None.
 
-    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*tf.pow(u,2))**2+1000/(1+tf.norm(u, ord=2)))  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  
-
+    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*tf.pow(u,2))**2)  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  
+                                                        #
 # Otra forma de hacerlo:
 # u = model(tf.stack([x, t], axis=1))  # tf.stack([x, t], axis=1) y tape.watch([x, t])
 
@@ -175,6 +175,34 @@ t_boundary = tf.convert_to_tensor(np.linspace(0, 1, Nt), dtype=tf.float32)
 u_boundary = 5*tf.ones_like(t_boundary, dtype=tf.float32)
 
 
+X, T = np.meshgrid(x, t)
+
+plt.scatter(X.flatten(), T.flatten(), color="lightgray", s=5, label="Interior")
+
+# Condición inicial
+plt.scatter(x, np.zeros_like(x), color="blue", s=20, label="Condición inicial")
+
+# Condiciones de frontera
+plt.scatter(np.full_like(t_boundary, -1), t_boundary, color="red", s=20, label="Frontera x=-1")
+plt.scatter(np.full_like(t_boundary,  1), t_boundary, color="green", s=20, label="Frontera x=1")
+
+plt.xlabel("x")
+plt.ylabel("t")
+plt.title("Distribución de puntos en el dominio PDE")
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.show()
+
+# --- Gráfico 2: Función de condición inicial ---
+plt.figure(figsize=(7,5))
+plt.plot(x, u_initial, color="blue")
+plt.xlabel("x")
+plt.ylabel("u(x,0)")
+plt.title("Condición inicial: u(x,0) = 5(1-x^2)")
+plt.grid(True, alpha=0.3)
+plt.show()
+
+
 
 
 #...........................................................................................................................................................................................................................................................................
@@ -185,7 +213,7 @@ u_boundary = 5*tf.ones_like(t_boundary, dtype=tf.float32)
 model = PINN([10, 15, 20, 25,30, 1])
 #model = PINN([100,50,25, 1]) #sin el 25 da más temperatura, pero menos que el modelo anterior, y alborota más la fcn de perdida (3)
 #model = PINN([50,1]) 
-optimizer = tf.keras.optimizers.Adam(learning_rate=5e-4) #(4)
+optimizer = tf.keras.optimizers.Adam(learning_rate=5e-4) #(4)5e-4
 epochs = 3000
 #...........................................................................................................................................................................................................................................................................
 
@@ -194,9 +222,9 @@ epochs = 3000
 best_epoch = 0  #guardamos la epoca donde mejor fue entrenado el modelo
 best_loss = 50000000.0 #guardamos el función de perdida más baja que dio, para saber cual fue el mejor entrenamiento, comenzamos en un valor muy alto para hacer comparación
 
-w_pde = 0.6  # Prioriza la pérdida de la EDP
-w_ic = 0.2
-w_bc = 0.2
+w_pde = 1.0  # Prioriza la pérdida de la EDP
+w_ic = 0.0
+w_bc = 0.0
 
 History_loss_1 = []
 History_loss_2 = []
@@ -208,7 +236,7 @@ for epoch in range(epochs):
     with tf.GradientTape() as tape:
 
         if epoch == 2400:
-            optimizer.learning_rate.assign(5e-5)
+            optimizer.learning_rate.assign(5e-5) #5e-5
 
         #elif epoch == 2000:
         #    optimizer.learning_rate.assign(0.00001)
@@ -254,7 +282,7 @@ for epoch in range(epochs):
         
 
     
-    print(f"Epoch {epoch}/{epochs},Loss_PINN: {loss:.5f}") 
+    print(f"Epoch {epoch}/{epochs},Loss_PINN: {loss}") #{loss:.5f}
 
 print("holaa")
 print("mejor epoca de entrenamiento:", best_epoch)
@@ -354,26 +382,62 @@ plt.title("Pérdida por época en la EDP")
 plt.xlabel("Época")
 plt.ylabel("Pérdida")
 plt.show()
-
+#Ultimas 1200 épocas
+epocas_pde = np.arange(len(History_loss_1)-1200, len(History_loss_1))
+plt.figure()
+plt.plot(epocas_pde, History_loss_1[-1200:], color='blue')
+plt.title("Pérdida por época en la EDP (Últimas 1200 épocas)")
+plt.xlabel("Época")
+plt.ylabel("Pérdida")
+plt.grid(True, alpha=0.3)
+plt.show()
+#_____________________________________________________________________________________________
 #Loss en valores iniciales
 plt.plot(History_loss_2,color='orange')
 plt.title("Pérdida por época en los valores iniciales")
 plt.xlabel("Época")
 plt.ylabel("Pérdida")
 plt.show()
-
+#Ultimas 1200 épocas
+epocas_ic = np.arange(len(History_loss_2)-1200, len(History_loss_2))
+plt.figure()
+plt.plot(epocas_ic, History_loss_2[-1200:], color='orange')
+plt.title("Pérdida por época en los valores iniciales (Últimas 1200 épocas)")
+plt.xlabel("Época")
+plt.ylabel("Pérdida")
+plt.grid(True, alpha=0.3)
+plt.show()
+#_____________________________________________________________________________________________
 #Loss en frontera
 plt.plot(History_loss_3,color='green')
 plt.title("Pérdida por época en la frontera")
 plt.xlabel("Época")
 plt.ylabel("Pérdida")
 plt.show()
-
+#Ultimas 1200 épocas
+epocas_bc = np.arange(len(History_loss_3)-1200, len(History_loss_3))
+plt.figure()
+plt.plot(epocas_bc, History_loss_3[-1200:], color='green')
+plt.title("Pérdida por época en la frontera (Últimas 1200 épocas)")
+plt.xlabel("Época")
+plt.ylabel("Pérdida")
+plt.grid(True, alpha=0.3)
+plt.show()
+#_____________________________________________________________________________________________
 #Loss TOTAL
 plt.plot(History_total_loss,color='red')
 plt.title("Pérdida por época TOTAL")
 plt.xlabel("Época")
 plt.ylabel("Pérdida")
+plt.show()
+#Ultimas 1200 épocas
+epocas_total = np.arange(len(History_total_loss)-1200, len(History_total_loss))
+plt.figure()
+plt.plot(epocas_total, History_total_loss[-1200:], color='red')
+plt.title("Pérdida por época fcn de perdida TOTAL (Últimas 1200 épocas)")
+plt.xlabel("Época")
+plt.ylabel("Pérdida")
+plt.grid(True, alpha=0.3)
 plt.show()
 #NOTAS
 
@@ -565,5 +629,30 @@ versión 18
 versión 19
 
 *Con n/(1+tf.norm(u, ord=2) n=1000 llegamos a 6!, la fcn de perdida baja considerablemente,s e ve mejor la total, pero la de los valores inciales esta creciendo mucho!
+
+"""
+
+
+
+"""
+versión fantasma
+
+*Se olvida registrar esta abotación, en el git dodne aparece Nx y Nt en 400 volvio aumentar la tempereatura, se puede encontrar antes de la versión 20
+
+
+
+"""
+
+"""
+versión 20
+
+*Se han incluido los cambios sugeridos por el profesor Leonardo
+*(1) las garficas asintoticas que miran als ultimas 1200 épcoas de las fcn's de perdida
+*(2) Los pesos de las funciones de perdida de (bc) y (ic) se dejaron con w=0 y solo estamos contando la de la (pde)
+*Por alguna razón, al hacer ese cambio las fcn en w=0 (wights) cuando se esta optimizando el problema, las graficas de ellas cambiaron al final, solo cuando w!= 0 no era asi
+*(3) con la norma la temperatura lleg a 9 !!! solo contando la fcn loss de pde
+*(4) sin la norma no ayuda mucho, antes baja la temperatura demasiado, me toco cambairle los learning rate porque estaba la fcn de eprda llegando a valores negativos
+*(5) No me gusta como se hizo el grafico de la distribución de puntos, fue genrado por ChatGPT, debo de hacer una versión propia y entenderlo porque no esta funcionando bien
+*(6) se incluyo el código del profesor Leoanrdo en otro .py, sigo estudiandolo como funciona, auqnue entinedo la forma que reparten los datos
 
 """
