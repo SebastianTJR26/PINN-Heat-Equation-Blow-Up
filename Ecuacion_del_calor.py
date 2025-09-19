@@ -94,7 +94,7 @@ def EDP_loss(model, x, t, alpha,beta):
         # Las derivadas deben estar dentro del tape, porque TensorFlow está rastreando si se hace bien.
         # Si están fuera, podrían dar None.
 
-    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*tf.pow(u,2))**2)  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  
+    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*tf.pow(u,2))**2+1000/(1+tf.norm(u, ord=2)))  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  
                                                         #
 # Otra forma de hacerlo:
 # u = model(tf.stack([x, t], axis=1))  # tf.stack([x, t], axis=1) y tape.watch([x, t])
@@ -222,15 +222,17 @@ epochs = 3000
 best_epoch = 0  #guardamos la epoca donde mejor fue entrenado el modelo
 best_loss = 50000000.0 #guardamos el función de perdida más baja que dio, para saber cual fue el mejor entrenamiento, comenzamos en un valor muy alto para hacer comparación
 
-w_pde = 1.0  # Prioriza la pérdida de la EDP
-w_ic = 0.0
-w_bc = 0.0
+w_pde = 0.85  # Prioriza la pérdida de la EDP
+w_ic = 0.1  # Para obtener Blow Up es muy importante, depende de la condición inicial, más no de la frontera
+w_bc = 0.05    
 
 History_loss_1 = []
 History_loss_2 = []
 History_loss_3 = []
 History_total_loss= []
 
+
+#Capturar tiempo
 for epoch in range(epochs):
 
     with tf.GradientTape() as tape:
@@ -652,7 +654,7 @@ versión 20
 *Por alguna razón, al hacer ese cambio las fcn en w=0 (wights) cuando se esta optimizando el problema, las graficas de ellas cambiaron al final, solo cuando w!= 0 no era asi
 *(3) con la norma la temperatura lleg a 9 !!! solo contando la fcn loss de pde
 *(4) sin la norma no ayuda mucho, antes baja la temperatura demasiado, me toco cambairle los learning rate porque estaba la fcn de eprda llegando a valores negativos
-*(5) No me gusta como se hizo el grafico de la distribución de puntos, fue genrado por ChatGPT, debo de hacer una versión propia y entenderlo porque no esta funcionando bien
+*(5) No me gusta como se hizo el grafico de la distribución de puntos, fue generado por ChatGPT, debo de hacer una versión propia y entenderlo porque no esta funcionando bien
 *(6) se incluyo el código del profesor Leoanrdo en otro .py, sigo estudiandolo como funciona, auqnue entinedo la forma que reparten los datos
 
 """
