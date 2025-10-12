@@ -34,7 +34,7 @@ class PINN(tf.keras.Model):
         self.hidden_layers = [tf.keras.layers.Dense(layer, activation='tanh') for layer in layers[:-1]] #original tanh
 
         # Capa de salida con activación None
-        self.output_layer = tf.keras.layers.Dense(layers[-1], activation= 'relu') #None original relu
+        self.output_layer = tf.keras.layers.Dense(layers[-1], activation= None) #None original relu
 
     def call(self, inputs): # Forward propagation
         x = inputs[:, 0:1]  # Extrae la primera columna (posición x)
@@ -215,7 +215,7 @@ model = PINN([10, 15, 20, 25,30, 1])
 #model = PINN([100,50,25, 1]) #sin el 25 da más temperatura, pero menos que el modelo anterior, y alborota más la fcn de perdida (3)
 #model = PINN([50,1]) 
 optimizer = tf.keras.optimizers.Adam(learning_rate=5e-4) #(4)5e-4
-epochs = 3000
+epochs = 6500
 #...........................................................................................................................................................................................................................................................................
 
 
@@ -656,5 +656,14 @@ versión 20
 *(4) sin la norma no ayuda mucho, antes baja la temperatura demasiado, me toco cambairle los learning rate porque estaba la fcn de eprda llegando a valores negativos
 *(5) No me gusta como se hizo el grafico de la distribución de puntos, fue generado por ChatGPT, debo de hacer una versión propia y entenderlo porque no esta funcionando bien
 *(6) se incluyo el código del profesor Leoanrdo en otro .py, sigo estudiandolo como funciona, auqnue entinedo la forma que reparten los datos
+
+"""
+
+"""
+versión 21
+
+*Antes de esta versión, se guardaron unos cambios en la misma fecha que no se registraron, entre ellos fue dejar en solo pleteo todas las funcciones de perdida y sus graficos asintotios ultimas n épocas
+*Se tenia entrenado a 3000 épocas con ultima capa relu, la temperatura era 7.2, de hay para adelante por más modificaciones que se hicieran no ayudo mucho
+*Ahora el entrenamiento se extendio a 6500 épocas,, la ultima capa se desactivo y Nx y Nt en ambas versiones estaban en 400, la temperatura llego a 9.26
 
 """
