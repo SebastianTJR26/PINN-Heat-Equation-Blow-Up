@@ -2,6 +2,7 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
+import time
 import os
 import random
 
@@ -233,6 +234,7 @@ History_total_loss= []
 
 
 #Capturar tiempo
+start = time.time() 
 for epoch in range(epochs):
 
     with tf.GradientTape() as tape:
@@ -286,7 +288,8 @@ for epoch in range(epochs):
     
     print(f"Epoch {epoch}/{epochs},Loss_PINN: {loss}") #{loss:.5f}
 
-print("holaa")
+end = time.time()
+print("Tiempo de ejecución:", end - start, "segundos")
 print("mejor epoca de entrenamiento:", best_epoch)
 print("valor de la PINN_loss:", best_loss )
 
@@ -316,29 +319,6 @@ X_np = X.numpy()
 T_np = T.numpy()
 U_pred_np = U_pred.numpy()
 
-# 5. Graficar la solución en 3D
-fig = plt.figure(figsize=(10, 6))
-ax = fig.add_subplot(111, projection='3d')
-ax.plot_surface(X_np, T_np, U_pred_np, cmap='hot')
-
-# Etiquetas
-ax.set_xlabel('Posición x')
-ax.set_ylabel('Tiempo t')
-ax.set_zlabel('Solución u(x,t)')
-ax.set_title('Solución de la EDP con PINN, con U^3 Fuj')
-
-plt.show()
-
-#---------------------------------------------------------------------------------------------
-#Crearemos un mapa de Calor para tener mejor vizualisación de la malla
-
-plt.figure(figsize=(8, 6))
-plt.contourf(X, T, U_pred, levels=100, cmap='inferno')  # Usa 'hot' para reflejar calor
-plt.colorbar(label="Temperatura")
-plt.xlabel("Posición x")
-plt.ylabel("Tiempo t")
-plt.title("Mapa de calor de la solución PINN, con U^2 op no lineal ARTICULO")
-plt.show()
 
 
 
@@ -363,83 +343,103 @@ if respuesta == 'S':
 # T_vals: vector de tiempos de longitud M
 # U_pred_np: array (M, N) con la solución PINN en la malla (t en filas, x en columnas)
 
-# 1. Defino umbral pequeño, por ejemplo 1% de la amplitud inicial
-epsilon = 0.01 * (U_pred_np.max() - U_pred_np.min())
+# NUEVOS GRAFICOS CONCATENADOS
+asintota = 1200
+def ultimos(x, n=asintota):
+    n = min(len(x), n)
+    start = max(0, len(x) - n)
+    epocas = np.arange(start, len(x))
+    return epocas, x[start:]
 
-# 2. Vector de máximos por cada tiempo
-maximos = U_pred_np.max(axis=1)                                               #un ensayo de captura del tiempo en que explota la EDP
+fig, axes = plt.subplots(4, 2, figsize=(14, 12), sharex='col')
+fig.suptitle("Funciones de Pérdida por Época", fontsize=16, y=0.98)
 
-# 3. Tiempo inicial de calentamiento
-idx = np.argmax(maximos > (maximos[0] + epsilon))
-t_inicio = T_np[idx, 0]  # como T_np es malla, tomo la columna 0
+# --- EDP ---
+axes[0,0].plot(History_loss_1, color='blue')
+axes[0,0].set_title("EDP - Completo")
+axes[0,0].set_ylabel("Pérdida")
 
-print(f"Comienza a calentar en t ≈ {t_inicio:.4f}")
+ep_pde, y_pde = ultimos(History_loss_1, asintota)
+axes[0,1].plot(ep_pde, y_pde, color='blue')
+axes[0,1].set_title("EDP - Últimas "+ str(asintota) +" épocas")
+
+# --- Valores iniciales ---
+axes[1,0].plot(History_loss_2, color='orange')
+axes[1,0].set_title("Valores iniciales - Completo")
+axes[1,0].set_ylabel("Pérdida")
+
+ep_ic, y_ic = ultimos(History_loss_2, asintota)
+axes[1,1].plot(ep_ic, y_ic, color='orange')
+axes[1,1].set_title("Valores Iniciales - Últimas "+ str(asintota) +" épocas")
+
+# --- Frontera ---
+axes[2,0].plot(History_loss_3, color='green')
+axes[2,0].set_title("Frontera - Completo")
+axes[2,0].set_ylabel("Pérdida")
+
+ep_bc, y_bc = ultimos(History_loss_3, asintota)
+axes[2,1].plot(ep_bc, y_bc, color='green')
+axes[2,1].set_title("Frontera - Últimas "+ str(asintota) +" épocas")
+
+# --- Total ---
+axes[3,0].plot(History_total_loss, color='red')
+axes[3,0].set_title("Total - Completo")
+axes[3,0].set_xlabel("Época")
+axes[3,0].set_ylabel("Pérdida")
+
+ep_tot, y_tot = ultimos(History_total_loss, asintota)
+axes[3,1].plot(ep_tot, y_tot, color='red')
+axes[3,1].set_title("Total - Últimas "+ str(asintota) +" épocas")
+axes[3,1].set_xlabel("Época")
+
+# Estética
+for ax in axes.flat:
+    ax.grid(True, alpha=0.3)
+
+plt.tight_layout(rect=[0, 0, 1, 0.96])
+plt.show()
+
+# 1. Crear la malla con tf.meshgrid
+X, T = tf.meshgrid(x, t)  # X representa las posiciones espaciales, T los tiempos
+
+# 2. Aplanar para formar los inputs al modelo
+X_flat = tf.reshape(X, [-1])  
+T_flat = tf.reshape(T, [-1])
+input_tensor = tf.stack([X_flat, T_flat], axis=1)  # (N, 2) donde N = 10000
+
+# 3. Evaluar la PINN
+U_pred = model(input_tensor)  # u(x,t) predicho por la red
+U_pred = tf.reshape(U_pred, X.shape)  # Volver a la forma (100,100)
+
+# 4. Convertir a NumPy para graficar
+X_np = X.numpy()
+T_np = T.numpy()
+U_pred_np = U_pred.numpy()
 
 
-#---------------------------------------------------------------------------------------------
-#GRAFICAS FUNCIONES DE PERDIDA
-#Loss en EDP
-plt.plot(History_loss_1,color='blue')
-plt.title("Pérdida por época en la EDP")
-plt.xlabel("Época")
-plt.ylabel("Pérdida")
-plt.show()
-#Ultimas 1200 épocas
-epocas_pde = np.arange(len(History_loss_1)-1200, len(History_loss_1))
-plt.figure()
-plt.plot(epocas_pde, History_loss_1[-1200:], color='blue')
-plt.title("Pérdida por época en la EDP (Últimas 1200 épocas)")
-plt.xlabel("Época")
-plt.ylabel("Pérdida")
-plt.grid(True, alpha=0.3)
-plt.show()
-#_____________________________________________________________________________________________
-#Loss en valores iniciales
-plt.plot(History_loss_2,color='orange')
-plt.title("Pérdida por época en los valores iniciales")
-plt.xlabel("Época")
-plt.ylabel("Pérdida")
-plt.show()
-#Ultimas 1200 épocas
-epocas_ic = np.arange(len(History_loss_2)-1200, len(History_loss_2))
-plt.figure()
-plt.plot(epocas_ic, History_loss_2[-1200:], color='orange')
-plt.title("Pérdida por época en los valores iniciales (Últimas 1200 épocas)")
-plt.xlabel("Época")
-plt.ylabel("Pérdida")
-plt.grid(True, alpha=0.3)
-plt.show()
-#_____________________________________________________________________________________________
-#Loss en frontera
-plt.plot(History_loss_3,color='green')
-plt.title("Pérdida por época en la frontera")
-plt.xlabel("Época")
-plt.ylabel("Pérdida")
-plt.show()
-#Ultimas 1200 épocas
-epocas_bc = np.arange(len(History_loss_3)-1200, len(History_loss_3))
-plt.figure()
-plt.plot(epocas_bc, History_loss_3[-1200:], color='green')
-plt.title("Pérdida por época en la frontera (Últimas 1200 épocas)")
-plt.xlabel("Época")
-plt.ylabel("Pérdida")
-plt.grid(True, alpha=0.3)
-plt.show()
-#_____________________________________________________________________________________________
-#Loss TOTAL
-plt.plot(History_total_loss,color='red')
-plt.title("Pérdida por época TOTAL")
-plt.xlabel("Época")
-plt.ylabel("Pérdida")
-plt.show()
-#Ultimas 1200 épocas
-epocas_total = np.arange(len(History_total_loss)-1200, len(History_total_loss))
-plt.figure()
-plt.plot(epocas_total, History_total_loss[-1200:], color='red')
-plt.title("Pérdida por época fcn de perdida TOTAL (Últimas 1200 épocas)")
-plt.xlabel("Época")
-plt.ylabel("Pérdida")
-plt.grid(True, alpha=0.3)
+
+
+
+
+fig = plt.figure(figsize=(14, 6))
+
+# --- Subplot 1: Superficie 3D ---
+ax1 = fig.add_subplot(1, 2, 1, projection='3d')
+surf = ax1.plot_surface(X_np, T_np, U_pred_np, cmap='hot')
+ax1.set_xlabel('Posición x')
+ax1.set_ylabel('Tiempo t')
+ax1.set_zlabel('Solución u(x,t)')
+ax1.set_title('Solución de la EDP con PINN, con U^2' )
+
+# --- Subplot 2: Mapa de calor ---
+ax2 = fig.add_subplot(1, 2, 2)
+contour = ax2.contourf(X, T, U_pred, levels=100, cmap='inferno')
+fig.colorbar(contour, ax=ax2, label="Temperatura")
+ax2.set_xlabel("Posición x")
+ax2.set_ylabel("Tiempo t")
+ax2.set_title("Mapa de calor de la solución PINN, con U^2")
+
+plt.tight_layout()
 plt.show()
 #NOTAS
 
