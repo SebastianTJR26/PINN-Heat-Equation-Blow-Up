@@ -2,10 +2,21 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
-
+import time
+import os
+import random
 #Toda operación que lleve el tf, esta ejecutanode en GPU (porque ya CUDA se enlazo con mi grafica NVIDIA y da true)
 #Toda operación con np, esta en CPU
-#segundo paso, se define como creo mi PINNN, cuantas capaz y neuronas, y el  
+#segundo paso, se define como creo mi PINNN, cuantas capaz y neuronas, y el 
+
+os.environ['PYTHONHASHSEED'] = '0' 
+np.random.seed(0)
+
+# Para TensorFlow (semilla global y determinismo en GPU)       #Estas son semillas, lo que buscan es que la EDP deje de varias y cuando se haga el mapa de calor, ya sea el mismo siempre, almenos que se modifiquen parametros como el alpha del oeprador no lineal
+random.seed(0)
+tf.random.set_seed(0)
+os.environ['TF_DETERMINISTIC_OPS'] = '1'
+os.environ['TF_CUDNN_DETERMINISTIC'] = '1'  
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 class PINN(tf.keras.Model):  
     def __init__(self, layers):
@@ -154,6 +165,14 @@ epochs = 500
 
 #(3)ENTRENAMIENTO!
 
+History_loss_1 = []
+History_loss_2 = []
+History_loss_3 = []
+History_total_loss= []
+
+
+#(3)ENTRENAMIENTO!
+start = time.time() 
 for epoch in range(epochs):
     with tf.GradientTape() as tape:
          loss_1 = EDP_loss(model, x, t, alpha,beta)
@@ -164,13 +183,67 @@ for epoch in range(epochs):
 
          PINN_loss = loss_1 + loss_2 + loss_3
 
+         History_loss_1.append(loss_1)
+         History_loss_2.append(loss_2)
+         History_loss_3.append(loss_3)
+         History_total_loss.append(PINN_loss)
+
+
     gradients = tape.gradient(PINN_loss, model.trainable_variables)
     optimizer.apply_gradients(zip(gradients, model.trainable_variables))
 
     
     print(f"Epoch {epoch}/{epochs},Loss_PINN: {PINN_loss.numpy()}")
+end = time.time()
+print("Tiempo de ejecución:", end - start, "segundos")
 
-print("holaa")
+def ultimos(x, n=1200):
+    n = min(len(x), n)
+    start = max(0, len(x) - n)
+    epocas = np.arange(start, len(x))
+    return epocas, x[start:]
+
+
+fig, axes = plt.subplots(4, 2, figsize=(14, 12), sharex='col')
+fig.suptitle("Funciones de Pérdida por Época", fontsize=16, y=0.98)
+
+# --- EDP ---
+axes[0,0].plot(History_loss_1, color='blue')
+axes[0,0].set_title("EDP - Completo")
+axes[0,0].set_ylabel("Pérdida")
+
+ep_pde, y_pde = ultimos(History_loss_1, 100)
+axes[0,1].plot(ep_pde, y_pde, color='blue')
+axes[0,1].set_title("EDP - Últimas 100 épocas")
+
+# --- Valores iniciales ---
+axes[1,0].plot(History_loss_2, color='orange')
+axes[1,0].set_title("Valores iniciales - Completo")
+axes[1,0].set_ylabel("Pérdida")
+
+ep_ic, y_ic = ultimos(History_loss_2, 100)
+axes[1,1].plot(ep_ic, y_ic, color='orange')
+axes[1,1].set_title("Valores iniciales - Últimas 100 épocas")
+
+# --- Frontera ---
+axes[2,0].plot(History_loss_3, color='green')
+axes[2,0].set_title("Frontera - Completo")
+axes[2,0].set_ylabel("Pérdida")
+
+ep_bc, y_bc = ultimos(History_loss_3, 100)
+axes[2,1].plot(ep_bc, y_bc, color='green')
+axes[2,1].set_title("Frontera - Últimas 100 épocas")
+
+# --- Total ---
+axes[3,0].plot(History_total_loss, color='red')
+axes[3,0].set_title("Total - Completo")
+axes[3,0].set_xlabel("Época")
+axes[3,0].set_ylabel("Pérdida")
+
+ep_tot, y_tot = ultimos(History_total_loss, 100)
+axes[3,1].plot(ep_tot, y_tot, color='red')
+axes[3,1].set_title("Total - Últimas 100 épocas")
+axes[3,1].set_xlabel("Época")
 
 
 
@@ -193,28 +266,25 @@ X_np = X.numpy()
 T_np = T.numpy()
 U_pred_np = U_pred.numpy()
 
-# 5. Graficar la solución en 3D
-fig = plt.figure(figsize=(10, 6))
-ax = fig.add_subplot(111, projection='3d')
-ax.plot_surface(X_np, T_np, U_pred_np, cmap='hot') # Usa 'hot' para reflejar calor
+fig = plt.figure(figsize=(14, 6))
 
-# Etiquetas
-ax.set_xlabel('Posición x')
-ax.set_ylabel('Tiempo t')
-ax.set_zlabel('Solución u(x,t)')
-ax.set_title('Solución de la EDP con PINN, con U^2')
+# --- Subplot 1: Superficie 3D ---
+ax1 = fig.add_subplot(1, 2, 1, projection='3d')
+surf = ax1.plot_surface(X_np, T_np, U_pred_np, cmap='jet')
+ax1.set_xlabel('Posición x')
+ax1.set_ylabel('Tiempo t')
+ax1.set_zlabel('Solución u(x,t)')
+ax1.set_title('Solución de la EDP con PINN, con U^2')
 
-plt.show()
+# --- Subplot 2: Mapa de calor ---
+ax2 = fig.add_subplot(1, 2, 2)
+contour = ax2.contourf(X, T, U_pred, levels=100, cmap='jet')
+fig.colorbar(contour, ax=ax2, label="Temperatura")
+ax2.set_xlabel("Posición x")
+ax2.set_ylabel("Tiempo t")
+ax2.set_title("Mapa de calor de la solución PINN, con U^2")
 
-#---------------------------------------------------------------------------------------------
-#crearemos un mapa de calor para tener mejor vizualisación de la malla
-
-plt.figure(figsize=(8, 6))
-plt.contourf(X, T, U_pred, levels=100, cmap='inferno')  
-plt.colorbar(label="Temperatura")
-plt.xlabel("Posición x")
-plt.ylabel("Tiempo t")
-plt.title("Mapa de calor de la solución PINN, con U^2 y operador no lineal e")
+plt.tight_layout()
 plt.show()
 
 #NOTAS
@@ -224,4 +294,10 @@ Esta es la segunda versión de la EDP de calor que se realizo
 * La malla 3D ahora tiene colores rojos y amarillos, mostrando la intensidad de donde se ve más el calor , que es en las puntas de la montaña por asi decirlo
 * se le agrego un opeador no lineal a la EDP, por tanto se una modificación en EDP Loss ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²
 * se realizo un mapa en 2D, para no ver la montaña, sino como un mapa de calor de la malla al estilo wilteck
+"""
+
+"""
+Esta versión fue alterada
+*Ahora tiene la grafica de las 4 funciones de de perdida, las astintoticas, el mapa de calor y el grafico 3D en color jet
+
 """
