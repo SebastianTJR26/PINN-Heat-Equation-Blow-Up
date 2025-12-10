@@ -31,7 +31,7 @@ class PINN(tf.keras.Model):
         super(PINN, self).__init__()
 
         # Capas ocultas con activación 'tanh'
-        self.hidden_layers = [tf.keras.layers.Dense(layer, activation='relu') for layer in layers[:-1]] #original tanh
+        self.hidden_layers = [tf.keras.layers.Dense(layer, activation='tanh') for layer in layers[:-1]] #original tanh
 
         # Capa de salida con activación None
         self.output_layer = tf.keras.layers.Dense(layers[-1], activation= None) #None original relu
@@ -678,3 +678,37 @@ versión 22
 
 
 
+"""
+versión 23 NO ES TODAVIA EL BLOW UP, PERO ES LA VERSIÓN COMO FINAL DE ESTE CÓDIGO DE MOMENTO
+
+*Este fue el mejor resultado obtenido con la PINN en la temperatura, donde todas las capaz usan activación tanh a pesar de ser acotada, y la salida sin activación
+*Se incluyeron los códigos modificados tomados de los commits anteriores y se hicieron sus ramas alternas
+_________________________________________________________________________________________________________________________________________________________________________________________________________________________
+*llamado 2, que esta en la versión 2, commit (EDP op no lineal) se incluyo lo siguiente:
+-Ahora tiene la grafica de las 4 funciones de de perdida, las astintoticas, el mapa de calor y el grafico 3D en color jet en un solo plot
+
+_________________________________________________________________________________________________________________________________________________________________________________________________________________________
+*llamado 3, que esta alrededor de la versión 16, commit (Blow Up con los parametros del articulo y modificaciones de Leonardo (Tenemos mejoria)) se incluyo lo siguiente:
+-Ahora tiene la grafica de las 4 funciones de de perdida, las astintoticas, el mapa de calor y el grafico 3D en color jet en un solo plot
+
+_________________________________________________________________________________________________________________________________________________________________________________________________________________________
+*llamado 4, que esta en la versión 17, commit (Nx,Nt 200 temp 5.7 3000 epochs) se incluyo lo siguiente:
+-Ahora tiene la grafica de las 4 funciones de de perdida, las astintoticas, el mapa de calor y el grafico 3D en color jet en un solo plot
+
+_________________________________________________________________________________________________________________________________________________________________________________________________________________________
+*llamado 1, que esta en la versión 1, commit (EDP original) QUE ES LA LINEA QUE TIENE LOS CAMBIOS MÁS IMPORTANTES se incluyo lo siguiente:
+
+VERSIÓN ALTERNATIVA UNIFORME
+-Ahora tiene la grafica de las 4 funciones de de perdida, las astintoticas, el mapa de calor y se incluyo un grafico 3D  en color jet en un solo plot
+-Esta es la única versión que plote la colocación de los puntos del dominio y la condición inicial
+-se incluyeron cosas posteriores como dejar la misma semilla para que el resultado de la EDP sea el mismo
+-Tambien tiene la solución analítica
+
+VERSIÓN ALTERNATIVA ALEATORIA
+-Esta es la que incluye la versión donde los puntos se distribuyen aleatoriamente en el dominio y el gráfico que se debe estudiar, de todas las versiones alternas, ESTA ES LA ÚNICA QUE LA TIENE!!!
+_________________________________________________________________________________________________________________________________________________________________________________________________________________________
+
+*Una cosa que me percarte antes de la presentación de la propuesta, cuando Leonardo pidio cambiar la distribución a random en las variables (x,t), la EDP del calor se parecia más a la solución analitíca
+*Pero me cambiaba muchos los resultados de todos mis experimentos y esta versión estable si le coloco ese cambio baja la temperatura, preocupa un poco y es mejor empezar a experimentar con una nueva versión de la PINN
+
+"""
