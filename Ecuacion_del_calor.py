@@ -31,7 +31,7 @@ class PINN(tf.keras.Model):
         super(PINN, self).__init__()
 
         # Capas ocultas con activación 'tanh'
-        self.hidden_layers = [tf.keras.layers.Dense(layer, activation='tanh') for layer in layers[:-1]] #original tanh
+        self.hidden_layers = [tf.keras.layers.Dense(layer, activation='relu') for layer in layers[:-1]] #original tanh
 
         # Capa de salida con activación None
         self.output_layer = tf.keras.layers.Dense(layers[-1], activation= None) #None original relu
@@ -149,9 +149,10 @@ beta = tf.constant(1.0, dtype=tf.float32)                                 #POR E
  
 # Discretización del espacio x en 100 puntos en el intervalo [0,1] ; el valor original era 100, ahora son 200 puntos de vizualisación
 x = tf.convert_to_tensor(np.linspace(-1, 1, Nx), dtype=tf.float32)
-                                                                             #aun necesito rastrearlos conn el type.watch, por alguna razon, no se rastrean bien
+#x = tf.random.uniform((Nx,), minval=-1.0, maxval=1.0, dtype=tf.float32)                                                                             #aun necesito rastrearlos conn el type.watch, por alguna razon, no se rastrean bien
 # Discretización del tiempo t en 100 puntos en el intervalo [0,1]
 t = tf.convert_to_tensor(np.linspace(0, dt*Nt, Nt), dtype=tf.float32)
+#t = tf.random.uniform((Nt,), minval=0.0, maxval=dt * Nt, dtype=tf.float32)
  
 # Puntos iniciales en x (idénticos a x, porque representan la condición inicial en todo el dominio espacial)
 #x_initial = tf.convert_to_tensor(np.linspace(0, 1, 100), dtype=tf.float32)
@@ -425,7 +426,7 @@ fig = plt.figure(figsize=(14, 6))
 
 # --- Subplot 1: Superficie 3D ---
 ax1 = fig.add_subplot(1, 2, 1, projection='3d')
-surf = ax1.plot_surface(X_np, T_np, U_pred_np, cmap='hot')
+surf = ax1.plot_surface(X_np, T_np, U_pred_np, cmap='jet')
 ax1.set_xlabel('Posición x')
 ax1.set_ylabel('Tiempo t')
 ax1.set_zlabel('Solución u(x,t)')
@@ -433,7 +434,7 @@ ax1.set_title('Solución de la EDP con PINN, con U^2' )
 
 # --- Subplot 2: Mapa de calor ---
 ax2 = fig.add_subplot(1, 2, 2)
-contour = ax2.contourf(X, T, U_pred, levels=100, cmap='inferno')
+contour = ax2.contourf(X, T, U_pred, levels=100, cmap='jet')
 fig.colorbar(contour, ax=ax2, label="Temperatura")
 ax2.set_xlabel("Posición x")
 ax2.set_ylabel("Tiempo t")
@@ -667,3 +668,13 @@ versión 21
 *Ahora el entrenamiento se extendio a 6500 épocas,, la ultima capa se desactivo y Nx y Nt en ambas versiones estaban en 400, la temperatura llego a 9.26
 
 """
+
+
+"""
+versión 22
+*Esta es una versión en donde se cambio todas las capaz de tanh por relu, para ver si una fcn de activación no acotada mejoraba el crecimiento de la temperatura, resultado no fue asi :/
+
+"""
+
+
+
