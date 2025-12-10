@@ -122,16 +122,16 @@ def Frontera_loss(model,x_boundary,t_boundary,u_boundary):
 #...........................................................................................................................................................................................................................................................................
 
 
-N_interior = 10000
+
 #cuarto paso, creamos el entrenamiento
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #(1)Defino la data
 #...........................................................................................................................................................................................................................................................................
 # Discretización del espacio x en 100 puntos en el intervalo [0,1]
-x = tf.convert_to_tensor(np.linspace(0, 1, 100), dtype=tf.float32)
+x = tf.random.uniform((300, 1), minval=0.0, maxval=1.0, dtype=tf.float32)
                                                                              #aun necesito rastrearlos conn el type.watch, por alguna razon, no se rastrean bien
 # Discretización del tiempo t en 100 puntos en el intervalo [0,1]
-t = tf.convert_to_tensor(np.linspace(0, 1, 100), dtype=tf.float32)
+t = tf.random.uniform((300, 1), minval=0.0, maxval=1.0, dtype=tf.float32)    # AHORA LOS PUNTOS EN EL DOMINIO SON ALEATORIOS!!!
 
 # Puntos iniciales en x (idénticos a x, porque representan la condición inicial en todo el dominio espacial)
 x_initial = tf.convert_to_tensor(np.linspace(0, 1, 100), dtype=tf.float32)
@@ -197,8 +197,8 @@ print("Tiempo de ejecución:", end - start, "segundos")
 #---------------------------------------------------------------------------------------------
 
 
-# LA GRAFICA QUE MIRA EL TOTAL DE LAS FUNCIONES DE PERDIDA Y LAS ASINTOTICAS
-def ultimos(x, n=100):
+
+def ultimos(x, n=1200):
     n = min(len(x), n)
     start = max(0, len(x) - n)
     epocas = np.arange(start, len(x))
@@ -244,7 +244,6 @@ ep_tot, y_tot = ultimos(History_total_loss, 100)
 axes[3,1].plot(ep_tot, y_tot, color='red')
 axes[3,1].set_title("Total - Últimas 100 épocas")
 axes[3,1].set_xlabel("Época")
-
 # Estética las variables que permiten plotear las superficies del mapa de calor y el 3D
 for ax in axes.flat:
     ax.grid(True, alpha=0.3)
@@ -333,10 +332,13 @@ plt.show()
 ######## 
 
 # ESTE ES EL GRÁFICO QUE PLOTEALA COLOCACIÓN DE LOS PUNTOS DEL DOMINIO DE LA EDP Y EN LA CONDICIÓN INICIAL
+# PERO EN ESTA OCASIÓN , HAY UNA MODIFICACIÓN QUE SE DEBE ESTUDIAR PORQUE ESTE ES EL QUE PERMITE VER LA DISTRIBUCIÓN ALEATORIO DE LOS PUNTOS
+# HAY UN PLOT SOLO DEL DOMINIO QUE NO SE VE BIEN, Y LUEGOS LOS DOS SUBPLOT DONDE VUELVE A ESTAR EL DOMINIO, PERO ESTA VEZ SI ALEATORIO UNIFORME, POR ESO SE DEBEN ESTUDIAR ¿EN QUÉ SE DIFERENCIAN?
 
 
 # Malla para puntos del PDE
 
+#DOMINIO, PERO DE FORMA ALEATORIA
 plt.figure(figsize=(7, 5))
 
 # Interior
@@ -360,15 +362,24 @@ plt.grid(True, alpha=0.3)
 plt.legend()
 plt.show()
 
-#Condición inicial curva más puntos
+
+
+
+
+
+
+
+
+
+#CONDICIÓN INICIAL
 
 plt.figure(figsize=(7,5))
-plt.plot(x_initial_np, u_initial_np, color="blue", label="u(x,0) = 5(1-x^2)")
+plt.plot(x_initial_np, u_initial_np, color="blue", label="u(x,0) = sin(pi*x)")
 plt.scatter(x_initial_np, u_initial_np, color="red", s=12, label="muestras IC")
 
 plt.xlabel("x")
 plt.ylabel("u(x,0)")
-plt.title("Condición inicial: u(x,0) = 5(1-x^2)")
+plt.title("Condición inicial: u(x,0) = sin(pi*x)")
 plt.grid(True, alpha=0.3)
 plt.legend()
 plt.show()
@@ -385,7 +396,7 @@ fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 ax = axes[0]
 
 # Interior
-ax.scatter(X, T, s=5, alpha=0.4, label="Interior")
+ax.scatter(tf.squeeze(x), tf.squeeze(t), s=5, alpha=0.4, label="Interior")
 
 # Condición inicial
 ax.scatter(x_initial_np, t_initial_np, s=12, c='red', label="IC (t=0)")
@@ -433,8 +444,16 @@ Esta es la primera versión de la EDP de calor que se realizo
 
 """
 VERSIÓN ALTERNATIVA UNIFORME
+
 *Ahora tiene la grafica de las 4 funciones de de perdida, las astintoticas, el mapa de calor y se incluyo un grafico 3D  en color jet en un solo plot
 *Esta es la única versión que plote la colocación de los puntos del dominio y la condición inicial
 *se incluyeron cosas posteriores como dejar la misma semilla para que el resultado de la EDP sea el mismo
 *Tambien tiene la solución analítica
+"""
+
+"""
+VERSIÓN ALTERNATIVA ALEATORIA
+
+*Esta es la que incluye la versión donde lso puntos se distribuyen aleatoriamente en el dominio y el gráfico que se debe estudiar, de todas las versiones alternas, ESTA ES LA ÚNICA QUE LA TIENE!!!
+
 """
