@@ -4,6 +4,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import time
 import os
+import math
 import random
 
 #Toda operación que lleve el tf, esta ejecutanode en GPU (porque ya CUDA se enlazo con mi grafica NVIDIA y da true)
@@ -56,8 +57,11 @@ class PINN(tf.keras.Model):
         return CAPA_EDP  # Devuelve la salida de la red
   
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
+#######################################
+#######################################
+#ANOTAR LOS CAMBIOS HECHOS HOY 10/02/2026
+#######################################
+#######################################
 
 #segundo paso ,La función de pérdida es el núcleo de las PINNs. Combina tres componentes:
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -110,7 +114,7 @@ def Valores_Iniciales_loss(model, x, t_initial, u_initial):
     # Predecir u(x, t_initial) usando la red neuronal
     u = model(tf.stack([x, t_initial], axis=1))
     # Calcular la pérdida: (u - u_initial)²
-    return tf.reduce_mean((u- u_initial)**2)
+    return (tf.reduce_mean((u- u_initial)**2))
 
 #...........................................................................................................................................................................................................................................................................
 
@@ -163,7 +167,7 @@ t_initial = tf.zeros_like(x_initial, dtype=tf.float32)
 #t_initial = t 
 # Condición inicial u(x,0) = sin(pi * x), valores de u en t=0
 #u_initial = tf.convert_to_tensor(np.sin(np.pi * np.linspace(0, 1, 100)), dtype=tf.float32)
-u_initial = tf.convert_to_tensor(5*(1-np.linspace(-1, 1, Nx)**2),dtype=tf.float32) #LEONARDO
+u_initial = tf.convert_to_tensor(10000*(1-np.linspace(-1, 1, Nx)**2),dtype=tf.float32) #LEONARDO
 #u0 = np.where(np.abs(x) <= 1, 1.0, 0.0)
 #u_initial = tf.convert_to_tensor(u0, dtype=tf.float32)
  
@@ -174,7 +178,7 @@ x_boundary = tf.convert_to_tensor(np.linspace(-1, 1, Nx), dtype=tf.float32)
 t_boundary = tf.convert_to_tensor(np.linspace(0, 1, Nt), dtype=tf.float32)
  
 # Condición de frontera: u(0,t) = u(1,t) = 0, esto significa que en los extremos el valor es siempre 0
-u_boundary = 5*tf.ones_like(t_boundary, dtype=tf.float32)
+u_boundary = 10000*tf.ones_like(t_boundary, dtype=tf.float32)
 
 
 X, T = np.meshgrid(x, t)
@@ -200,7 +204,7 @@ plt.figure(figsize=(7,5))
 plt.plot(x, u_initial, color="blue")
 plt.xlabel("x")
 plt.ylabel("u(x,0)")
-plt.title("Condición inicial: u(x,0) = 5(1-x^2)")
+plt.title("Condición inicial: u(x,0) = 10000(1-x^2)")
 plt.grid(True, alpha=0.3)
 plt.show()
 
@@ -712,3 +716,17 @@ ________________________________________________________________________________
 *Pero me cambiaba muchos los resultados de todos mis experimentos y esta versión estable si le coloco ese cambio baja la temperatura, preocupa un poco y es mejor empezar a experimentar con una nueva versión de la PINN
 
 """
+
+
+
+
+#AÑO 2026
+
+
+"""
+versión 24
+*Por sugerencia del profe Leonardo, se dicidio modificar la condición inicial, en vez de ser 5(1-x^2) ahora es 10000(1-x^2), esto para ver si la red estaba reescalando despues de pasar a otra capa
+*La red no re escalo y aumento a 40 la temperatura!!
+*La condición de la norma con o sin ella no afecta en que crezca la red, pero con la norma la función de perdida de la EDP no se altera tanto, sin ella si empieza a tener a ver dificultades en el aprendizaje
+*Esta vez con más tiempo de entrenamiento, 10000 épocas por ejemplo si se ve más crecimiento y forma de obtener más resultados, pro defecto aun lo dejamos en 6500
+*la función de perdida esta extremadamente gigantezca, en posteriores modificaciones, sugerencias de Leonardo e ideas mias, ya tenemos pistas de como encontrar el Blow Up, más adelante anotaremos eso aqui y modificaremos el código, haber si funciona o no
