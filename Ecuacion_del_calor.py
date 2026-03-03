@@ -68,7 +68,7 @@ class PINN(tf.keras.Model):
 
 #(1) Pérdida de la PDE: Mide cuánto se desvía la solución de la red neuronal de la ecuación diferencial. ∥∂u/∂t-α*∂²u/∂x²∥²
 #...........................................................................................................................................................................................................................................................................
-def EDP_loss(model, x, t, alpha,beta):
+def EDP_loss(model, x, t, alpha,beta,T_final,epsilon,gamma):
     # tf.GradientTape es una herramienta de TensorFlow para calcular derivadas (gradientes) de operaciones con respecto a sus variables.
     # with asegura que todas las operaciones dentro de él sean "grabadas" por GradientTape, para que luego se puedan calcular sus gradientes.
     # El parámetro persistent=True permite que la cinta (tape) sea reutilizable para calcular múltiples gradientes. 
@@ -78,20 +78,23 @@ def EDP_loss(model, x, t, alpha,beta):
     # Esto es necesario cuando variable no es un tensor entrenable (es decir, no es un parámetro de la red neuronal, 
     # como los pesos o biases), pero aún así necesitas calcular derivadas con respecto a esa variable.
 
+    w_ti = 1.0 / tf.pow(T_final - t + epsilon, gamma) #como esto no se esta derivando, no es necesario su verificación
+
     with tf.GradientTape(persistent=True) as tape:
+
         tape.watch(x)
         tape.watch(t)
 
         # Combina los tensores x y t a lo largo del eje 1, en pocas palabras, crea la función u(x,t).
         # OJO: ESTA NO ES LA SOLUCIÓN ANALÍTICA O NUMÉRICA, es una (u) formada por la red.
         # Cambia u -> u_pred en caso de confusión.
-        u = model(tf.concat([tf.reshape(x, (-1, 1)), tf.reshape(t, (-1, 1))], axis=1))
+        u_φ = model(tf.concat([tf.reshape(x, (-1, 1)), tf.reshape(t, (-1, 1))], axis=1))
 
         # Diferenciación automática, calcula la derivada de la función u con respecto a t
-        du_dt = tape.gradient(u, t)  
+        du_dt = tape.gradient(u_φ, t)  
 
         # Diferenciación automática, calcula la derivada de la función u con respecto a x
-        du_dx = tape.gradient(u, x)  
+        du_dx = tape.gradient(u_φ, x)  
 
         # Diferenciación automática, calcula la segunda derivada de la función u con respecto a x
         d2u_dx2 = tape.gradient(du_dx, x)  
@@ -99,8 +102,10 @@ def EDP_loss(model, x, t, alpha,beta):
         # Las derivadas deben estar dentro del tape, porque TensorFlow está rastreando si se hace bien.
         # Si están fuera, podrían dar None.
 
-    return tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*tf.pow(u,2))**2+1000/(1+tf.norm(u, ord=2)))  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  
-                                                        #
+    residuo_edp = tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*tf.pow(u_φ,2))**2)  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  +1000/(1+tf.norm(u_φ, ord=2))
+
+    return tf.reduce_sum(w_ti * tf.square(residuo_edp)) / tf.reduce_sum(w_ti)
+                                                        
 # Otra forma de hacerlo:
 # u = model(tf.stack([x, t], axis=1))  # tf.stack([x, t], axis=1) y tape.watch([x, t])
 
@@ -112,9 +117,9 @@ def Valores_Iniciales_loss(model, x, t_initial, u_initial):
     #tape.watch([x, t_initial, u_initial])  # ¡Innecesario! ya que no se hara ninguna operación de diferencia finita, esto solo es cuando uno hace gradiente a cosas no declaradas con tensorflow, como numpy
 
     # Predecir u(x, t_initial) usando la red neuronal
-    u = model(tf.stack([x, t_initial], axis=1))
+    u_φ = model(tf.stack([x, t_initial], axis=1))
     # Calcular la pérdida: (u - u_initial)²
-    return (tf.reduce_mean((u- u_initial)**2))
+    return (tf.reduce_mean((u_φ- u_initial)**2))
 
 #...........................................................................................................................................................................................................................................................................
 
@@ -122,11 +127,11 @@ def Valores_Iniciales_loss(model, x, t_initial, u_initial):
 #(3) Perdida en la frontera: Mide cuánto se desvía la solución de la red neuronal de las condiciones de frontera. ∥u(0,t)-u_boundary(t)∥²+∥u(L,t)-u_boundary(t)∥²
 #...........................................................................................................................................................................................................................................................................
 def Frontera_loss(model,x_boundary,t_boundary,u_boundary):
-    u_pred_0 = model(tf.stack([x_boundary[0] * tf.ones_like(t_boundary), t_boundary], axis=1))
-    u_pred_L = model(tf.stack([x_boundary[1] * tf.ones_like(t_boundary), t_boundary], axis=1))
+    u_φ_0 = model(tf.stack([x_boundary[0] * tf.ones_like(t_boundary), t_boundary], axis=1))
+    u_φ_L = model(tf.stack([x_boundary[1] * tf.ones_like(t_boundary), t_boundary], axis=1))
     
-    loss_0 = tf.reduce_mean((u_pred_0 - u_boundary) ** 2)
-    loss_L = tf.reduce_mean((u_pred_L - u_boundary) ** 2)
+    loss_0 = tf.reduce_mean((u_φ_0 - u_boundary) ** 2)
+    loss_L = tf.reduce_mean((u_φ_L - u_boundary) ** 2)
     return loss_0+loss_L
 #...........................................................................................................................................................................................................................................................................
 
@@ -138,9 +143,9 @@ def Frontera_loss(model,x_boundary,t_boundary,u_boundary):
 #...........................................................................................................................................................................................................................................................................
 
 #Parametros fisicos de la EDP
-Nx=400
+Nx=500
 dt=0.001
-Nt=400
+Nt=500
 
 
  
@@ -148,14 +153,19 @@ Nt=400
 alpha = tf.constant(1.0, dtype=tf.float32)
  
 # Coeficiente de difusión del calor (parametro físico)                     #ESTO DE ACÁ, LOS ALPHA Y BETHA ESTAN SIENDO MUY IMPORTANTES, MI BETHA PEQUEÑO NO PERMITIA QUE DETECTARA EL  OP NO LINEAL, TODO SE ESTABA AJUSTANDO ERA A LA EDP SIN TENER ENCUENTA EL OP NO LINEAL
-beta = tf.constant(1.0, dtype=tf.float32)                                 #POR ESO SIEMPRE SALIA LO MISMO, AUNQUE ESTAMOS AUN EN FASE DE PRUEBAS
+beta = tf.constant(3.0, dtype=tf.float32)                                 #POR ESO SIEMPRE SALIA LO MISMO, AUNQUE ESTAMOS AUN EN FASE DE PRUEBAS
+
+gamma = tf.constant(2.0, dtype=tf.float32)
  
  
+T_final = 0.3170 # Este es el tiempo estimado de la explosión para u^2 en el experimento númerico
+
 # Discretización del espacio x en 100 puntos en el intervalo [0,1] ; el valor original era 100, ahora son 200 puntos de vizualisación
 x = tf.convert_to_tensor(np.linspace(-1, 1, Nx), dtype=tf.float32)
 #x = tf.random.uniform((Nx,), minval=-1.0, maxval=1.0, dtype=tf.float32)                                                                             #aun necesito rastrearlos conn el type.watch, por alguna razon, no se rastrean bien
 # Discretización del tiempo t en 100 puntos en el intervalo [0,1]
-t = tf.convert_to_tensor(np.linspace(0, dt*Nt, Nt), dtype=tf.float32)
+t = tf.convert_to_tensor(T_final*(1-np.linspace(0,1,Nt)**beta),dtype=tf.float32)
+#t = tf.convert_to_tensor(np.linspace(0, dt*Nt, Nt), dtype=tf.float32)
 #t = tf.random.uniform((Nt,), minval=0.0, maxval=dt * Nt, dtype=tf.float32)
  
 # Puntos iniciales en x (idénticos a x, porque representan la condición inicial en todo el dominio espacial)
@@ -167,7 +177,7 @@ t_initial = tf.zeros_like(x_initial, dtype=tf.float32)
 #t_initial = t 
 # Condición inicial u(x,0) = sin(pi * x), valores de u en t=0
 #u_initial = tf.convert_to_tensor(np.sin(np.pi * np.linspace(0, 1, 100)), dtype=tf.float32)
-u_initial = tf.convert_to_tensor(10000*(1-np.linspace(-1, 1, Nx)**2),dtype=tf.float32) #LEONARDO
+u_initial = tf.convert_to_tensor(5*(1-np.linspace(-1, 1, Nx)**2),dtype=tf.float32) #LEONARDO
 #u0 = np.where(np.abs(x) <= 1, 1.0, 0.0)
 #u_initial = tf.convert_to_tensor(u0, dtype=tf.float32)
  
@@ -175,12 +185,12 @@ u_initial = tf.convert_to_tensor(10000*(1-np.linspace(-1, 1, Nx)**2),dtype=tf.fl
 x_boundary = tf.convert_to_tensor(np.linspace(-1, 1, Nx), dtype=tf.float32)
                                                                                    #26/05/2025 Leonardo me pidio cambiar las dondiciones de frontera entre -1 a 1
 # Valores de tiempo en la frontera (cubre todos los valores de t en [0,1])
-t_boundary = tf.convert_to_tensor(np.linspace(0, 1, Nt), dtype=tf.float32)
+t_boundary = tf.convert_to_tensor(np.linspace(0, T_final, Nt), dtype=tf.float32)
  
 # Condición de frontera: u(0,t) = u(1,t) = 0, esto significa que en los extremos el valor es siempre 0
-u_boundary = 10000*tf.ones_like(t_boundary, dtype=tf.float32)
+u_boundary = 5*tf.ones_like(t_boundary, dtype=tf.float32)
 
-
+epsilon = 1e-3 #para cuando T_final=t, y no divida por 0, un valor demasiado minusculo para que no altere lo demas
 X, T = np.meshgrid(x, t)
 
 plt.scatter(X.flatten(), T.flatten(), color="lightgray", s=5, label="Interior")
@@ -254,7 +264,7 @@ for epoch in range(epochs):
         #    optimizer.learning_rate.assign(0.000001)       
 
 
-        loss_1 = EDP_loss(model, x, t, alpha,beta)
+        loss_1 = EDP_loss(model, x, t, alpha,beta,T_final,epsilon,gamma)
 
         loss_2 = Valores_Iniciales_loss(model, x_initial, t_initial, u_initial)
 
@@ -730,3 +740,37 @@ versión 24
 *La condición de la norma con o sin ella no afecta en que crezca la red, pero con la norma la función de perdida de la EDP no se altera tanto, sin ella si empieza a tener a ver dificultades en el aprendizaje
 *Esta vez con más tiempo de entrenamiento, 10000 épocas por ejemplo si se ve más crecimiento y forma de obtener más resultados, pro defecto aun lo dejamos en 6500
 *la función de perdida esta extremadamente gigantezca, en posteriores modificaciones, sugerencias de Leonardo e ideas mias, ya tenemos pistas de como encontrar el Blow Up, más adelante anotaremos eso aqui y modificaremos el código, haber si funciona o no
+"""
+
+
+
+"""
+IMPLEMENTACIÓN PONDERADA HACIA EL BLOW UP EN CONSTRUCCIÓN
+
+*1000/(1+tf.norm(u, ord=2)) ya no esta haciendo tanto efecto en la PINN
+
+*gamma = tf.constant(1.0, dtype=tf.float32)
+ T_final = 0.3170  Se agregaron estas constantes, este T final es el que explota en la ecuación númerica
+
+* Este t es el que tira para el blow up (t = tf.convert_to_tensor(T_final*(1-np.linspace(0,1,Nt)**beta),dtype=tf.float32))
+
+* en la red, se cambio u_pred o el solo u ha u_φ para indicar que esa es la solución que esta dada por la PINN 
+
+*loss_1 = 0.0
+loss_2 = 0.0
+loss_3 = 0.0
+loss_1 += EDP_loss(model, x, t, alpha,beta,T_final,epsilon,gamma)
+
+loss_2 += Valores_Iniciales_loss(model, x_initial, t_initial, u_initial)
+
+loss_3 += Frontera_loss(model, x_boundary, t_boundary, u_boundary)
+segun la definiciones de las funcioens de eprdida, asi deberia ser, pero no me esta saliendo tan bien, estara propensa a una proxima revisión
+
+
+*se hiozo la ponderación del blow up que mando Leoanrdo en el residuo de la PDE
+
+*La norma se elimino cumpletamente
+
+* los loss_n += no se implementaron al final, pero aun se debe 
+
+"""
