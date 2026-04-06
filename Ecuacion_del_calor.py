@@ -1,6 +1,7 @@
 import tensorflow as tf
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+from Graficos_PINN import *
 import numpy as np
 import time
 import os
@@ -23,6 +24,7 @@ random.seed(0)
 tf.random.set_seed(0)
 os.environ['TF_DETERMINISTIC_OPS'] = '1'
 os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
+tf.keras.backend.set_floatx('float64')
 
 @register_keras_serializable()  # ¡Esta línea es crucial! 
 #primer paso, se define como creo mi PINNN, cuantas capaz y neuronas
@@ -32,15 +34,15 @@ class PINN(tf.keras.Model):
         super(PINN, self).__init__()
 
         # Capas ocultas con activación 'tanh'
-        self.hidden_layers = [tf.keras.layers.Dense(layer, activation='tanh') for layer in layers[:-1]] #original tanh
+        self.hidden_layers = [tf.keras.layers.Dense(layer, activation='tanh') for layer in layers[:-1]]
 
         # Capa de salida con activación None
-        self.output_layer = tf.keras.layers.Dense(layers[-1], activation= None) #None original relu
+        self.output_layer = tf.keras.layers.Dense(layers[-1], activation=None)
 
     def call(self, inputs): # Forward propagation
         x = inputs[:, 0:1]  # Extrae la primera columna (posición x)
         t = inputs[:, 1:2]  # Extrae la segunda columna (tiempo t) 
-        # Separa las entradas en x y t, ya que la EDP que queremos hallar está en función de u(x,t)
+        # Separa las entradas en x y t, ya que la EDP que queremos hallar está en función de u_φ(x,t)
         # siendo "x" posición y "t" el tiempo
         # Son dos entradas porque esta EDP está en función de "x" y "t"
 
@@ -52,23 +54,23 @@ class PINN(tf.keras.Model):
             CAPA_EDP = layer(CAPA_EDP)  # Aplica cada capa densa
 
         CAPA_EDP = self.output_layer(CAPA_EDP)  
-        # Aplica la capa de salida sin activación, ya que estamos modelando u(x,t)
+        # Aplica la capa de salida sin activación, ya que estamos modelando u_φ(x,t)
             
         return CAPA_EDP  # Devuelve la salida de la red
   
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#######################################
-#######################################
-#ANOTAR LOS CAMBIOS HECHOS HOY 10/02/2026
-#######################################
-#######################################
+
 
 #segundo paso ,La función de pérdida es el núcleo de las PINNs. Combina tres componentes:
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 #(1) Pérdida de la PDE: Mide cuánto se desvía la solución de la red neuronal de la ecuación diferencial. ∥∂u/∂t-α*∂²u/∂x²∥²
 #...........................................................................................................................................................................................................................................................................
-def EDP_loss(model, x, t, alpha,beta,T_final,epsilon,gamma):
+#antes, las condiciones iniciales y la frontera estaban en stack, no concatenadas, ahora ya si estan concatenadas
+
+#La solución de la Ecuación Diferencial dada por la PINN se denoratara por: ---(u_φ)---
+
+def EDP_loss(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma):
     # tf.GradientTape es una herramienta de TensorFlow para calcular derivadas (gradientes) de operaciones con respecto a sus variables.
     # with asegura que todas las operaciones dentro de él sean "grabadas" por GradientTape, para que luego se puedan calcular sus gradientes.
     # El parámetro persistent=True permite que la cinta (tape) sea reutilizable para calcular múltiples gradientes. 
@@ -80,6 +82,7 @@ def EDP_loss(model, x, t, alpha,beta,T_final,epsilon,gamma):
 
     w_ti = 1.0 / tf.pow(T_final - t + epsilon, gamma) #como esto no se esta derivando, no es necesario su verificación
 
+    
     with tf.GradientTape(persistent=True) as tape:
 
         tape.watch(x)
@@ -87,7 +90,7 @@ def EDP_loss(model, x, t, alpha,beta,T_final,epsilon,gamma):
 
         # Combina los tensores x y t a lo largo del eje 1, en pocas palabras, crea la función u(x,t).
         # OJO: ESTA NO ES LA SOLUCIÓN ANALÍTICA O NUMÉRICA, es una (u) formada por la red.
-        # Cambia u -> u_pred en caso de confusión.
+        # Cambia u_φ -> u_pred en caso de confusión.
         u_φ = model(tf.concat([tf.reshape(x, (-1, 1)), tf.reshape(t, (-1, 1))], axis=1))
 
         # Diferenciación automática, calcula la derivada de la función u con respecto a t
@@ -102,37 +105,45 @@ def EDP_loss(model, x, t, alpha,beta,T_final,epsilon,gamma):
         # Las derivadas deben estar dentro del tape, porque TensorFlow está rastreando si se hace bien.
         # Si están fuera, podrían dar None.
 
-    residuo_edp = tf.reduce_mean((du_dt - alpha * d2u_dx2- beta*tf.pow(u_φ,2))**2)  # ||∂u/∂t - α * ∂²u/∂x²-  β *u²||²  +1000/(1+tf.norm(u_φ, ord=2))
+    residuo_edp = du_dt - alpha_pde * d2u_dx2- beta_pde*tf.pow(u_φ,2)   
+    
+    """#RETURN 1 SIN PONDERACIÓN ADAPTATIVA
+    return tf.reduce_mean((residuo_edp)**2) #||∂u/∂t - α * ∂²u/∂x²-  β *u²||²
+    """
+    #RETURN 2 CON PONDERACIÓN ADAPTATIVA
+    return tf.reduce_sum(w_ti * tf.reduce_mean((residuo_edp)**2)) / tf.reduce_sum(w_ti) #-> (Σ w_ti * ||R||²)/ Σw_ti ESTA BIEN,  SI CUMPLE BIEN LA DEFINICIÓN
+    #return tf.reduce_sum(w_ti * tf.square(residuo_edp)) / tf.reduce_sum(w_ti) #-> (Σ w_ti * √R)/ Σw_ti ESTA MAL, NO ESTA SACANDO LA NORMA AL CUADRADO
+    
+# tf.reduce_mean((residuo_edp)**2) = tf.square(residuo_edp)
 
-    return tf.reduce_sum(w_ti * tf.square(residuo_edp)) / tf.reduce_sum(w_ti)
-                                                        
 # Otra forma de hacerlo:
 # u = model(tf.stack([x, t], axis=1))  # tf.stack([x, t], axis=1) y tape.watch([x, t])
 
 #...........................................................................................................................................................................................................................................................................
  
-#(2) Calculo con los valores inicales de la EDP para su función de perfida . ∥u(x,0)−u(x)∥² Mide cuánto se desvía la solución de la red neuronal de las condiciones iniciales.
+#(2) Cálculo con los valores inicales de la EDP para su función de perfida . ∥u(x,0)−u(x)∥² Mide cuanto se desvía la solución de la red neuronal de las condiciones iniciales.
 #...........................................................................................................................................................................................................................................................................
-def Valores_Iniciales_loss(model, x, t_initial, u_initial):
+def Valores_Iniciales_loss(model, x_in, t_in, u0_func):
     #tape.watch([x, t_initial, u_initial])  # ¡Innecesario! ya que no se hara ninguna operación de diferencia finita, esto solo es cuando uno hace gradiente a cosas no declaradas con tensorflow, como numpy
 
     # Predecir u(x, t_initial) usando la red neuronal
-    u_φ = model(tf.stack([x, t_initial], axis=1))
+    u_φ0 = model(tf.concat([x_in, t_in], axis=1))
     # Calcular la pérdida: (u - u_initial)²
-    return (tf.reduce_mean((u_φ- u_initial)**2))
+    return (tf.reduce_mean((u_φ0- u0_func)**2))
 
 #...........................................................................................................................................................................................................................................................................
 
 
 #(3) Perdida en la frontera: Mide cuánto se desvía la solución de la red neuronal de las condiciones de frontera. ∥u(0,t)-u_boundary(t)∥²+∥u(L,t)-u_boundary(t)∥²
 #...........................................................................................................................................................................................................................................................................
-def Frontera_loss(model,x_boundary,t_boundary,u_boundary):
-    u_φ_0 = model(tf.stack([x_boundary[0] * tf.ones_like(t_boundary), t_boundary], axis=1))
-    u_φ_L = model(tf.stack([x_boundary[1] * tf.ones_like(t_boundary), t_boundary], axis=1))
+def Frontera_loss(model, x_bnL, x_bnR , t_bn, u_bn_func):
+    u_φL = model(tf.concat([x_bnL, t_bn], axis=1))
+    u_φR = model(tf.concat([x_bnR, t_bn], axis=1))
     
-    loss_0 = tf.reduce_mean((u_φ_0 - u_boundary) ** 2)
-    loss_L = tf.reduce_mean((u_φ_L - u_boundary) ** 2)
-    return loss_0+loss_L
+    loss_L = tf.reduce_mean((u_φL - u_bn_func) ** 2)
+    loss_R = tf.reduce_mean((u_φR - u_bn_func) ** 2)
+    return loss_L+loss_R
+    #TANTO LA FUNCION DE PERDIDA DE LA FRONTERA COMO LOS VALORES INICIALES ESTABAN EN tf.stack Y NO tf.contac, TAL VEZ ESO INFLUYERA EN EL ERROR DEL TENSOR DIFERENTE
 #...........................................................................................................................................................................................................................................................................
 
 
@@ -142,81 +153,54 @@ def Frontera_loss(model,x_boundary,t_boundary,u_boundary):
 #(1)Defino la data
 #...........................................................................................................................................................................................................................................................................
 
-#Parametros fisicos de la EDP
-Nx=500
-dt=0.001
-Nt=500
+def funcion_valor_inicial(x):
+    return 5.0 * (1.0 - tf.square(x))  # MI FUNCIÓN DE PROBLEMA DE VALOR INICIAL
 
 
- 
 # Coeficiente de difusión del calor (parametro físico)
-alpha = tf.constant(1.0, dtype=tf.float32)
- 
-# Coeficiente de difusión del calor (parametro físico)                     #ESTO DE ACÁ, LOS ALPHA Y BETHA ESTAN SIENDO MUY IMPORTANTES, MI BETHA PEQUEÑO NO PERMITIA QUE DETECTARA EL  OP NO LINEAL, TODO SE ESTABA AJUSTANDO ERA A LA EDP SIN TENER ENCUENTA EL OP NO LINEAL
-beta = tf.constant(3.0, dtype=tf.float32)                                 #POR ESO SIEMPRE SALIA LO MISMO, AUNQUE ESTAMOS AUN EN FASE DE PRUEBAS
-
-gamma = tf.constant(2.0, dtype=tf.float32)
- 
+alpha_pde = tf.constant(1.0, dtype=tf.float64)                    #ESTO DE ACÁ, LOS ALPHA Y BETHA ESTAN SIENDO MUY IMPORTANTES, MI BETHA PEQUEÑO NO PERMITIA QUE DETECTARA EL  OP NO LINEAL, TODO SE ESTABA AJUSTANDO ERA A LA EDP SIN TENER ENCUENTA EL OP NO LINEAL
+beta_pde = tf.constant(1.0, dtype=tf.float64)                    #POR ESO SIEMPRE SALIA LO MISMO, AUNQUE ESTAMOS AUN EN FASE DE PRUEBAS
+gamma = tf.constant(2.0, dtype=tf.float64)
+ #PINN LEONARDO MIRAR
  
 T_final = 0.3170 # Este es el tiempo estimado de la explosión para u^2 en el experimento númerico
 
-# Discretización del espacio x en 100 puntos en el intervalo [0,1] ; el valor original era 100, ahora son 200 puntos de vizualisación
-x = tf.convert_to_tensor(np.linspace(-1, 1, Nx), dtype=tf.float32)
-#x = tf.random.uniform((Nx,), minval=-1.0, maxval=1.0, dtype=tf.float32)                                                                             #aun necesito rastrearlos conn el type.watch, por alguna razon, no se rastrean bien
-# Discretización del tiempo t en 100 puntos en el intervalo [0,1]
-t = tf.convert_to_tensor(T_final*(1-np.linspace(0,1,Nt)**beta),dtype=tf.float32)
-#t = tf.convert_to_tensor(np.linspace(0, dt*Nt, Nt), dtype=tf.float32)
-#t = tf.random.uniform((Nt,), minval=0.0, maxval=dt * Nt, dtype=tf.float32)
+#Aqui definimos la cantidad de puntos para la PINN
+Puntos_dom = 10000
+Puntos_ic= 1000
+Puntos_bn = 500
+
+# Para los datos de la PDE, x ∈ (-1,1) t>0, como de todos modos toca definir un intervalo final en t, se dejara hasta el tiempo donde se supone que explota
+# Eso segun el experimento númerico
+x = tf.random.uniform((Puntos_dom, 1), minval=-1.0, maxval=1.0, dtype=tf.float64)
+t = T_final*(1-tf.random.uniform((Puntos_dom, 1),minval = 0.0 , maxval = 1.0, dtype=tf.float64)**2) #PESOS PONDERADOS ADAPTATIVAMENTE (2)
+#t = tf.random.uniform((Puntos_dom, 1), minval=0.0,    maxval=T_final,  dtype=tf.float64)           #t DEFINIDO NORMALMENTE           (1)
  
-# Puntos iniciales en x (idénticos a x, porque representan la condición inicial en todo el dominio espacial)
-#x_initial = tf.convert_to_tensor(np.linspace(0, 1, 100), dtype=tf.float32)
-x_initial = x
- 
-# Puntos iniciales en t (todos ceros, porque representan t=0, el instante inicial)
-t_initial = tf.zeros_like(x_initial, dtype=tf.float32)
-#t_initial = t 
-# Condición inicial u(x,0) = sin(pi * x), valores de u en t=0
-#u_initial = tf.convert_to_tensor(np.sin(np.pi * np.linspace(0, 1, 100)), dtype=tf.float32)
-u_initial = tf.convert_to_tensor(5*(1-np.linspace(-1, 1, Nx)**2),dtype=tf.float32) #LEONARDO
-#u0 = np.where(np.abs(x) <= 1, 1.0, 0.0)
-#u_initial = tf.convert_to_tensor(u0, dtype=tf.float32)
- 
-# Puntos de la frontera x=0 y x=1 (solo dos valores: 0 y 1, representan los extremos del dominio)
-x_boundary = tf.convert_to_tensor(np.linspace(-1, 1, Nx), dtype=tf.float32)
-                                                                                   #26/05/2025 Leonardo me pidio cambiar las dondiciones de frontera entre -1 a 1
-# Valores de tiempo en la frontera (cubre todos los valores de t en [0,1])
-t_boundary = tf.convert_to_tensor(np.linspace(0, T_final, Nt), dtype=tf.float32)
- 
-# Condición de frontera: u(0,t) = u(1,t) = 0, esto significa que en los extremos el valor es siempre 0
-u_boundary = 5*tf.ones_like(t_boundary, dtype=tf.float32)
+# Para los datos en la condición inicial, x_in esta igual de definido que en x, es decir x_in ∈ (-1,1)
+# para t_in todos los puntos generados son cero, puesto que comienzo en u(x,0), es por eso t=0
+x_in = tf.random.uniform((Puntos_ic, 1), minval=-1.0, maxval=1.0, dtype=tf.float64)
+t_in = tf.zeros_like(x_in, dtype=tf.float64) # en u(x_in,0) genere la cantidad de puntos donde esta definido x_in
+u0_func = funcion_valor_inicial(x_in) 
+
+#Left, Righ
+# Para los datos en la fronetra
+t_bn  = tf.random.uniform((Puntos_bn, 1), minval=0.0, maxval=T_final, dtype=tf.float64) # porque como cuando definifimos x_in arriba, el x de la condición inicial esta (-1,1), el t_bn esta creciendo, es decir ∈ t>0 (leer el articulo para comprenderlo)
+x_bnL = tf.ones_like(t_bn, dtype=tf.float64) * -1.0 # en u(-1,t_bn) genere la cantidad de puntos de t_bn para la frontera izquierda 
+x_bnR = tf.ones_like(t_bn, dtype=tf.float64) * 1.0#  en u(1,t_bn) genere la cantidad de puntos de t_bn para la frontera derecha             
+u_bn_func  = tf.zeros_like(t_bn, dtype=tf.float64) # u(-1,t_bn)=u(1,t_bn)=0 para la función en la frontera, genere al comienzo, es decir en t=0, los puntos generados
+
+#NOTA: para entender como se definio esta data, se debe de leer el articulo de la explosión númerica del blow up y ver como esta defnido el (x,t) para el dominio de la PDE, en las condiciones iniciales y la frontera
+#Por el momento, el x_in y el t_bn dependen del "x" y "t" del dominio porque tienen las mismas condiciones, pero en el notebook se ven que los generan aparte
+#solamente para que pueda generar una cantidad de puntos independientes, osea una cantidad determinada adentro ene el dominio, otra cantidad en condiciones iniciales y otra en la frontera
+#hay que preguntar si necesitamos la mimsa cantidad generada de puntos en todos lados o o, y dependiendo de eso cambairemos la dependenca de x_in y t_bn despues
+
+
+
+x_line = tf.linspace(tf.constant(-1.0, tf.float64), tf.constant(1.0, tf.float64), Puntos_ic)
+u0_line = funcion_valor_inicial(tf.reshape(x_line, (-1,1)))
+distribucion_dominio_y_condicion_inicial_GRAF(x,t,x_in,t_in,u0_func,x_line,u0_line,x_bnL,x_bnR,t_bn,T_final)
 
 epsilon = 1e-3 #para cuando T_final=t, y no divida por 0, un valor demasiado minusculo para que no altere lo demas
-X, T = np.meshgrid(x, t)
-
-plt.scatter(X.flatten(), T.flatten(), color="lightgray", s=5, label="Interior")
-
-# Condición inicial
-plt.scatter(x, np.zeros_like(x), color="blue", s=20, label="Condición inicial")
-
-# Condiciones de frontera
-plt.scatter(np.full_like(t_boundary, -1), t_boundary, color="red", s=20, label="Frontera x=-1")
-plt.scatter(np.full_like(t_boundary,  1), t_boundary, color="green", s=20, label="Frontera x=1")
-
-plt.xlabel("x")
-plt.ylabel("t")
-plt.title("Distribución de puntos en el dominio PDE")
-plt.legend()
-plt.grid(True, alpha=0.3)
-plt.show()
-
-# --- Gráfico 2: Función de condición inicial ---
-plt.figure(figsize=(7,5))
-plt.plot(x, u_initial, color="blue")
-plt.xlabel("x")
-plt.ylabel("u(x,0)")
-plt.title("Condición inicial: u(x,0) = 10000(1-x^2)")
-plt.grid(True, alpha=0.3)
-plt.show()
 
 
 
@@ -226,21 +210,27 @@ plt.show()
 #(2)defino mi modelo (cuantas capas y que optimizador quiero, usualmente es adam, y el número de epocas que se entrenara)
 #model = PINN([20, 20, 20, 1])#la ultima capa siemrpe debe ser una neurona!! (1)
 #model = PINN([50,25, 1]) #mejor explosión (2)
-model = PINN([10, 15, 20, 25,30, 1])
+model = PINN([2,30, 30, 30, 30, 1])
+#model = PINN([10, 15, 20, 25,30, 1])
 #model = PINN([100,50,25, 1]) #sin el 25 da más temperatura, pero menos que el modelo anterior, y alborota más la fcn de perdida (3)
-#model = PINN([50,1]) 
-optimizer = tf.keras.optimizers.Adam(learning_rate=5e-4) #(4)5e-4
-epochs = 6500
+#model = PINN([50,1])
+epochs = 5000
+lr_sched = tf.keras.optimizers.schedules.PiecewiseConstantDecay(
+    boundaries=[int(0.33*epochs), int(0.66*epochs)],
+    values=[tf.constant(1e-2, tf.float64), tf.constant(1e-3, tf.float64), tf.constant(1e-4, tf.float64)]
+) 
+optimizer = tf.keras.optimizers.Adam(learning_rate=lr_sched) #(4)5e-4
+
 #...........................................................................................................................................................................................................................................................................
 
 
 #(3)ENTRENAMIENTO! (ACTUALIZACIÓN, se adiciona en el código la forma de guardar los mejores pesos entrenados)
 best_epoch = 0  #guardamos la epoca donde mejor fue entrenado el modelo
-best_loss = 50000000.0 #guardamos el función de perdida más baja que dio, para saber cual fue el mejor entrenamiento, comenzamos en un valor muy alto para hacer comparación
+#best_loss = 50000000.0 #guardamos el función de perdida más baja que dio, para saber cual fue el mejor entrenamiento, comenzamos en un valor muy alto para hacer comparación
 
-w_pde = 0.85  # Prioriza la pérdida de la EDP
-w_ic = 0.1  # Para obtener Blow Up es muy importante, depende de la condición inicial, más no de la frontera
-w_bc = 0.05    
+w_pde = 0.3  # Prioriza la pérdida de la EDP
+w_ic = 0.4  # Para obtener Blow Up es muy importante, depende de la condición inicial, más no de la frontera
+w_bc = 0.3    
 
 History_loss_1 = []
 History_loss_2 = []
@@ -250,25 +240,26 @@ History_total_loss= []
 
 #Capturar tiempo
 start = time.time() 
-for epoch in range(epochs):
+for epoch in range(1, epochs+1):
 
     with tf.GradientTape() as tape:
 
-        if epoch == 2400:
-            optimizer.learning_rate.assign(5e-5) #5e-5
+        """
+        if epoch == 1000:
+            optimizer.learning_rate.assign(5e-7) #5e-5
 
-        #elif epoch == 2000:
-        #    optimizer.learning_rate.assign(0.00001)
+        elif epoch == 2000:
+            optimizer.learning_rate.assign(5e-8)
 
-        #elif epoch == 3000:
-        #    optimizer.learning_rate.assign(0.000001)       
+        elif epoch == 2500:
+            optimizer.learning_rate.assign(5e-9)       
+        """
 
+        loss_1 = EDP_loss(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma)
 
-        loss_1 = EDP_loss(model, x, t, alpha,beta,T_final,epsilon,gamma)
+        loss_2 = Valores_Iniciales_loss(model, x_in, t_in, u0_func)
 
-        loss_2 = Valores_Iniciales_loss(model, x_initial, t_initial, u_initial)
-
-        loss_3 = Frontera_loss(model, x_boundary, t_boundary, u_boundary)
+        loss_3 = Frontera_loss(model, x_bnL, x_bnR , t_bn, u_bn_func)
 
         History_loss_1.append(loss_1)
 
@@ -283,11 +274,12 @@ for epoch in range(epochs):
         gradients = tape.gradient(PINN_loss, model.trainable_variables)
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
         loss = PINN_loss.numpy()
-    
+    """
     if  loss < best_loss: #si encontro una función de perdida donde aprendio mejor (redujo más), guarde cuanto fue, en que época y guarde esos pesos que fueron los mejroes entrenados
         best_loss = loss
         best_epoch = epoch
         model.save_weights("mejores_pesos_pinn.weights.h5")        #(P)
+    """    
 
     if epoch%100==0:
         xt = tf.concat([
@@ -306,19 +298,29 @@ for epoch in range(epochs):
 end = time.time()
 print("Tiempo de ejecución:", end - start, "segundos")
 print("mejor epoca de entrenamiento:", best_epoch)
-print("valor de la PINN_loss:", best_loss )
+#print("valor de la PINN_loss:", best_loss )
 
 #---------------------------------------------------------------------------------------------
 #PESOS
-model.load_weights("mejores_pesos_pinn.weights.h5") #cargue los mejores pesos del entrenamiento  (P)
+#model.load_weights("mejores_pesos_pinn.weights.h5") #cargue los mejores pesos del entrenamiento  (P)
 #---------------------------------------------------------------------------------------------
 
 
 #cuarto paso, mostramos vizualisaciones de los datos
 #---------------------------------------------------------------------------------------------
+#oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
+x_vis = tf.linspace(-1.0, 1.0, 100)
+t_vis = tf.linspace(0.0, T_final, 250)
+# ESTO DE ACA ES LO QUE PERMITE VIZUALIZAR BIEN LA MALLA 23/03/2026, 
+# * Uno de los errores que se estaba cometiendo al querer visualizar la solución de u_φ era que antes se mandaba todos los millones de puntos a graficar
+# Lo cual no era necesario, con unos pocos y estableciendo los (x) y (t) definidos de la EDP ya sale bien dibujado
+# * Antes aunque tuviera millones de puntos en (x) y (t), si dibujaba fluida ¿Por Qué? Porque estaban uniformemente espaciados
+# Lo cual para el computador era más facil de graficar, pero estaban mal definidos, porque las variables debian ser uniformemente aleatorias
+# Ahora, como estan definidas uniformemente aleatorias, graficar era un caos!!, entonces unicamente (x_vis,t_vis) si seran uniformemente y con ellas visualizare y dibujare la grafica
+# ya que ellas computacionalmente si son faciles de graficas, y como solo las estoy usando para visualizar, más no para entrenar, no afecta en nada a la verdadera solución de u_φ
 
 # 1. Crear la malla con tf.meshgrid
-X, T = tf.meshgrid(x, t)  # X representa las posiciones espaciales, T los tiempos
+X, T = tf.meshgrid(x_vis, t_vis)  # X representa las posiciones espaciales, T los tiempos
 
 # 2. Aplanar para formar los inputs al modelo
 X_flat = tf.reshape(X, [-1])  
@@ -332,7 +334,11 @@ U_pred = tf.reshape(U_pred, X.shape)  # Volver a la forma (100,100)
 # 4. Convertir a NumPy para graficar
 X_np = X.numpy()
 T_np = T.numpy()
-U_pred_np = U_pred.numpy()
+u_φ = U_pred.numpy()
+
+#La solución de la Ecuación Diferencial dada por la PINN se denoratara por: ---(u_φ)---
+
+  
 
 
 
@@ -359,103 +365,16 @@ if respuesta == 'S':
 # U_pred_np: array (M, N) con la solución PINN en la malla (t en filas, x en columnas)
 
 # NUEVOS GRAFICOS CONCATENADOS
+
 asintota = 1200
-def ultimos(x, n=asintota):
-    n = min(len(x), n)
-    start = max(0, len(x) - n)
-    epocas = np.arange(start, len(x))
-    return epocas, x[start:]
 
-fig, axes = plt.subplots(4, 2, figsize=(14, 12), sharex='col')
-fig.suptitle("Funciones de Pérdida por Época", fontsize=16, y=0.98)
-
-# --- EDP ---
-axes[0,0].plot(History_loss_1, color='blue')
-axes[0,0].set_title("EDP - Completo")
-axes[0,0].set_ylabel("Pérdida")
-
-ep_pde, y_pde = ultimos(History_loss_1, asintota)
-axes[0,1].plot(ep_pde, y_pde, color='blue')
-axes[0,1].set_title("EDP - Últimas "+ str(asintota) +" épocas")
-
-# --- Valores iniciales ---
-axes[1,0].plot(History_loss_2, color='orange')
-axes[1,0].set_title("Valores iniciales - Completo")
-axes[1,0].set_ylabel("Pérdida")
-
-ep_ic, y_ic = ultimos(History_loss_2, asintota)
-axes[1,1].plot(ep_ic, y_ic, color='orange')
-axes[1,1].set_title("Valores Iniciales - Últimas "+ str(asintota) +" épocas")
-
-# --- Frontera ---
-axes[2,0].plot(History_loss_3, color='green')
-axes[2,0].set_title("Frontera - Completo")
-axes[2,0].set_ylabel("Pérdida")
-
-ep_bc, y_bc = ultimos(History_loss_3, asintota)
-axes[2,1].plot(ep_bc, y_bc, color='green')
-axes[2,1].set_title("Frontera - Últimas "+ str(asintota) +" épocas")
-
-# --- Total ---
-axes[3,0].plot(History_total_loss, color='red')
-axes[3,0].set_title("Total - Completo")
-axes[3,0].set_xlabel("Época")
-axes[3,0].set_ylabel("Pérdida")
-
-ep_tot, y_tot = ultimos(History_total_loss, asintota)
-axes[3,1].plot(ep_tot, y_tot, color='red')
-axes[3,1].set_title("Total - Últimas "+ str(asintota) +" épocas")
-axes[3,1].set_xlabel("Época")
-
-# Estética
-for ax in axes.flat:
-    ax.grid(True, alpha=0.3)
-
-plt.tight_layout(rect=[0, 0, 1, 0.96])
-plt.show()
-
-# 1. Crear la malla con tf.meshgrid
-X, T = tf.meshgrid(x, t)  # X representa las posiciones espaciales, T los tiempos
-
-# 2. Aplanar para formar los inputs al modelo
-X_flat = tf.reshape(X, [-1])  
-T_flat = tf.reshape(T, [-1])
-input_tensor = tf.stack([X_flat, T_flat], axis=1)  # (N, 2) donde N = 10000
-
-# 3. Evaluar la PINN
-U_pred = model(input_tensor)  # u(x,t) predicho por la red
-U_pred = tf.reshape(U_pred, X.shape)  # Volver a la forma (100,100)
-
-# 4. Convertir a NumPy para graficar
-X_np = X.numpy()
-T_np = T.numpy()
-U_pred_np = U_pred.numpy()
+funciones_de_perdida_GRAF(x,asintota,History_loss_1,History_loss_2,History_loss_3,History_total_loss)
 
 
+mapa_de_calor_y_grafico_3D_para_la_PINN_GRAF(u_φ,X_np,T_np)
 
 
-
-
-fig = plt.figure(figsize=(14, 6))
-
-# --- Subplot 1: Superficie 3D ---
-ax1 = fig.add_subplot(1, 2, 1, projection='3d')
-surf = ax1.plot_surface(X_np, T_np, U_pred_np, cmap='jet')
-ax1.set_xlabel('Posición x')
-ax1.set_ylabel('Tiempo t')
-ax1.set_zlabel('Solución u(x,t)')
-ax1.set_title('Solución de la EDP con PINN, con U^2' )
-
-# --- Subplot 2: Mapa de calor ---
-ax2 = fig.add_subplot(1, 2, 2)
-contour = ax2.contourf(X, T, U_pred, levels=100, cmap='jet')
-fig.colorbar(contour, ax=ax2, label="Temperatura")
-ax2.set_xlabel("Posición x")
-ax2.set_ylabel("Tiempo t")
-ax2.set_title("Mapa de calor de la solución PINN, con U^2")
-
-plt.tight_layout()
-plt.show()
+PINN_vs_Diferencias_finitas_GRAF(u_φ,X_np,T_np)
 #NOTAS
 
 """
@@ -745,6 +664,8 @@ versión 24
 
 
 """
+versión 25
+
 IMPLEMENTACIÓN PONDERADA HACIA EL BLOW UP EN CONSTRUCCIÓN
 
 *1000/(1+tf.norm(u, ord=2)) ya no esta haciendo tanto efecto en la PINN
@@ -773,4 +694,31 @@ segun la definiciones de las funcioens de eprdida, asi deberia ser, pero no me e
 
 * los loss_n += no se implementaron al final, pero aun se debe 
 
+"""
+
+
+
+"""
+versión 26
+
+* Se hizo el cambio de tf.stack->tf.contac para las funciones de perdida de valores iniciales y frontera, tal vez eso hacia el problema de las dimensiones de los tensores y por eso cuando se colocaba este formato tf.random.uniform((Puntos_ic, 1), minval=-1.0, maxval=1.0, dtype=tf.float64) no dejaba
+* La data ahora si esta bien definidoa, se pensaba mandarlas a funciones, pero no era tan necesario como se pensaba, salvo la función de problema de valor inicial, esa si se necesita tener en un metodo aparte
+* Las graficas se movieron a un archivo llamado Graficos_PINN.py, y ahora los metodos de alla plotean todo
+* La razón por la que los mapas de calor se dibujaban feo era por que mandaba dibujar millones de puntos, ahorita solo estoy mandando 250x100
+* Aun esta pendiente la optimización del código
+* Se hicierón cambios a Leonardo.py
+* Se añadio un archivo de diferencias finitas para comparar (ES UN CÓDIGO MUY FACIL DE ENTENDER)
+* Se movieron varios archivos antiguos.py a la carpeta de experimentos
+* Anotar los cambios que hiciste para graficar las diferencias entre pinn y diferencias finitas antes de que se te olvide, como guardar las variables numericas y cosas asi (PENDIENTE)
+* Ahora la PINN si se ve bien, y muestra que esta tratando de solucionar enserio la ecuación diferencial, todos los cambios incluso desde la versión anterior fueron los correctos
+* Ya tengo super verificado que las funciones de perdida, estan totalmente bien, tal vez la nomenclatura aun puede variar en futuras versiones
+* El tamaño de la solución de la pinn con la diferencias finitas puede ser diferente en X y T, debes mriar que los parametros sean iguales para comparar, sino, dara error de dimension como esto: ERROR (300,300) comparative with (250,100)
+* El código esta mejor documentado y se puede entender que hace cada linea
+* 05/04/2026 HUBO UN PROBLEMA QUE SE IDENTIFICO EN EL (return) de EDP_loss, Habian dos return cuando solo debia haber uno, y el que se estaba llamando estaba mal, porque no tenia encuenta los pesos adaptativos
+* El segundo (return) que si era el que debia retornarse estaba mal definido, ya ahora si esta bien de acuerdo a la guia dada por el profe Leonardo
+* Se dejaron para usar dos return, uno que es el de los pesos adaptativos en el T_final del blow up y el otro que no esta con pesos adaptativos
+* FIJATE BIEN CUAL ESTAS LLAMANDO DEPENDIENDO DE LO QUE QUEIRAS (CON O SIN PESOS ADAPTATIVOS), ADEMAS FIJATE TAMBIEN QUE TIENE QUE ESTAR CON SU (t) correspondiente
+* Se arreglarón algunos errores de ortografía
+* No se tienen registros en la versión 25 de los códigos con los mapas de calor feos, nunca los guarde, pero con esta explicación se podrian recrear si uno quiere intentarlo, ademas esos mapas con poquitos puntos se demoraban en cargar
+* Si por algún motivo vuelves a la (versión 25), se me olvido escribir el encabezado de la versión, pero comienza con (IMPLEMENTACIÓN PONDERADA HACIA EL BLOW UP EN CONSTRUCCIÓN)
 """
