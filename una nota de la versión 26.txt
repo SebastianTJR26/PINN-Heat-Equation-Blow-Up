@@ -1,0 +1,2 @@
+*Si no te ejecuta la comparación con las diferencias finitas, cuando vayas a esa versión del código en el git, solamente ejecuta (Python Diferencias_finitas.py) una sola vez, y ya después la PINN
+*Esto solo hay que hacerlo solo una vez, ya después queda guardado la configuración
