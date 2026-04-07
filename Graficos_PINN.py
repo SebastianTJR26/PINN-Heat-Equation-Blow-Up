@@ -3,15 +3,15 @@ import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
 
 
-def distribucion_dominio_y_condicion_inicial_GRAF(x,t,x_in,t_in,u0_func,x_line,u0_line,x_bnL,x_bnR,t_bn,T_final):
+def distribucion_dominio_y_condicion_inicial_GRAF(x,τ,x_in,τ_in,u0_func,x_line,u0_line,x_bnL,x_bnR,τ_bn,T_final):
 
-	# Figura: distribución (x,t) + condición inicial
+	# Figura: distribución (x,τ) + condición inicial
 	fig, axs = plt.subplots(1, 2, figsize=(12, 5))
 	# Distribución (x,t)
-	axs[0].scatter(x.numpy(), t.numpy(), s=6, alpha=0.8,  label='PDE collocation', color='C0')
-	axs[0].scatter(x_in.numpy(),  t_in.numpy(),  s=6, alpha=0.8,  label='IC (t=0)', color='C3')
-	axs[0].scatter(x_bnL.numpy(),    t_bn.numpy(),  s=6, alpha=0.8,  label='BC x=-1', color='C2', marker='|')
-	axs[0].scatter(x_bnR.numpy(),    t_bn.numpy(),  s=6, alpha=0.8,  label='BC x=+1', color='C2', marker='|')
+	axs[0].scatter(x.numpy(), τ.numpy(), s=6, alpha=0.8,  label='PDE collocation', color='C0')
+	axs[0].scatter(x_in.numpy(),  τ_in.numpy(),  s=6, alpha=0.8,  label='IC (t=0)', color='C3')
+	axs[0].scatter(x_bnL.numpy(),    τ_bn.numpy(),  s=6, alpha=0.8,  label='BC x=-1', color='C2', marker='|')
+	axs[0].scatter(x_bnR.numpy(),    τ_bn.numpy(),  s=6, alpha=0.8,  label='BC x=+1', color='C2', marker='|')
 	axs[0].set_xlabel('x'); axs[0].set_ylabel('t')
 	axs[0].set_title('Distribución de puntos (PDE, IC y BC)')
 	axs[0].set_xlim(-1.0-0.05, 1.0+0.05)
