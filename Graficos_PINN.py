@@ -3,15 +3,15 @@ import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
 
 
-def distribucion_dominio_y_condicion_inicial_GRAF(x,τ,x_in,τ_in,u0_func,x_line,u0_line,x_bnL,x_bnR,τ_bn,T_final):
+def distribucion_dominio_y_condicion_inicial_GRAF(x,t,x_in,t_in,u0_func,x_line,u0_line,x_bnL,x_bnR,t_bn,T_final):
 
-	# Figura: distribución (x,τ) + condición inicial
+	# Figura: distribución (x,t) + condición inicial
 	fig, axs = plt.subplots(1, 2, figsize=(12, 5))
 	# Distribución (x,t)
-	axs[0].scatter(x.numpy(), τ.numpy(), s=6, alpha=0.8,  label='PDE collocation', color='C0')
-	axs[0].scatter(x_in.numpy(),  τ_in.numpy(),  s=6, alpha=0.8,  label='IC (t=0)', color='C3')
-	axs[0].scatter(x_bnL.numpy(),    τ_bn.numpy(),  s=6, alpha=0.8,  label='BC x=-1', color='C2', marker='|')
-	axs[0].scatter(x_bnR.numpy(),    τ_bn.numpy(),  s=6, alpha=0.8,  label='BC x=+1', color='C2', marker='|')
+	axs[0].scatter(x.numpy(), t.numpy(), s=6, alpha=0.8,  label='PDE collocation', color='C0')
+	axs[0].scatter(x_in.numpy(),  t_in.numpy(),  s=6, alpha=0.8,  label='IC (t=0)', color='C3')
+	axs[0].scatter(x_bnL.numpy(),    t_bn.numpy(),  s=6, alpha=0.8,  label='BC x=-1', color='C2', marker='|')
+	axs[0].scatter(x_bnR.numpy(),    t_bn.numpy(),  s=6, alpha=0.8,  label='BC x=+1', color='C2', marker='|')
 	axs[0].set_xlabel('x'); axs[0].set_ylabel('t')
 	axs[0].set_title('Distribución de puntos (PDE, IC y BC)')
 	axs[0].set_xlim(-1.0-0.05, 1.0+0.05)
@@ -99,7 +99,7 @@ def mapa_de_calor_y_grafico_3D_para_la_PINN_GRAF(u_φ,X_np,T_np):
 	ax1.set_xlabel('Posición x')
 	ax1.set_ylabel('Tiempo t')
 	ax1.set_zlabel('Solución u(x,t)')
-	ax1.set_title('Solución de la EDP con PINN, con U^2' )
+	ax1.set_title('Solución de la EDP con PINN' )
 
 	# --- Subplot 2: Mapa de calor ---
 	ax2 = fig.add_subplot(1, 2, 2)
@@ -107,7 +107,7 @@ def mapa_de_calor_y_grafico_3D_para_la_PINN_GRAF(u_φ,X_np,T_np):
 	fig.colorbar(contour, ax=ax2, label="Temperatura")
 	ax2.set_xlabel("Posición x")
 	ax2.set_ylabel("Tiempo t")
-	ax2.set_title("Mapa de calor de la solución PINN, con U^2")
+	ax2.set_title("Mapa de calor de la solución PINN")
 
 	plt.tight_layout()
 	plt.show()
@@ -157,6 +157,53 @@ def PINN_vs_Diferencias_finitas_GRAF(u_φ,X_np,T_np):
 	# Tercer subplot: Error absoluto
 	ax3 = fig.add_subplot(133)  # ¡CORREGIDO: era 132, debe ser 133!
 	contour3 = ax3.contourf(X_np, T_np, np.abs(u_φ - u_ψ), levels=100, cmap='jet')  # CORREGIDO: u_case_2 - U_pred_np
+	ax3.set_xlabel("Posición x")
+	ax3.set_ylabel("Tiempo t")
+	ax3.set_title("Error absoluto punto a punto")
+	fig.colorbar(contour3, ax=ax3, label="Temperatura")
+
+	# Ajustar espaciado y mostrar
+	plt.tight_layout()
+	plt.show()
+
+def mapa_de_calor_para_la_solucion_exacta_GRAF(u_exact, X_np, T_np):
+    plt.subplot(1, 1, 1)
+    plt.title("Mapa de calor solución exacta: $u_t = alpha*u_{xx}$")
+    
+    plt.imshow(u_exact, cmap='jet', aspect='auto',
+               extent=[X_np.min(), X_np.max(), T_np.min(), T_np.max()],
+               origin='lower')
+    
+    plt.colorbar(label='u(x,t)')
+    plt.xlabel('x')
+    plt.ylabel('t')
+
+    plt.tight_layout()
+    plt.show()
+
+
+def PINN_vs_solucion_real(u_φ,u_exact,X_np,T_np):
+	fig = plt.figure(figsize=(15, 5))
+
+	# Primer subplot: Solución PINN
+	ax1 = fig.add_subplot(131)
+	contour1 = ax1.contourf(X_np, T_np, u_φ, levels=100, cmap='jet')
+	ax1.set_xlabel("Posición x")
+	ax1.set_ylabel("Tiempo t")
+	ax1.set_title("Mapa de calor de la solución PINN")
+	fig.colorbar(contour1, ax=ax1, label="Temperatura")
+
+	# Segundo subplot: Diferencias finitas
+	ax2 = fig.add_subplot(132)
+	contour2 = ax2.contourf(X_np, T_np, u_exact, levels=100, cmap='jet')  # Asumiendo que u_case_2 tiene misma dimensión
+	ax2.set_xlabel("Posición x")
+	ax2.set_ylabel("Tiempo t")
+	ax2.set_title("Mapa de calor solución analitica")
+	fig.colorbar(contour2, ax=ax2, label="Temperatura")
+
+	# Tercer subplot: Error absoluto
+	ax3 = fig.add_subplot(133)  # ¡CORREGIDO: era 132, debe ser 133!
+	contour3 = ax3.contourf(X_np, T_np, np.abs(u_φ - u_exact), levels=100, cmap='jet')  # CORREGIDO: u_case_2 - U_pred_np
 	ax3.set_xlabel("Posición x")
 	ax3.set_ylabel("Tiempo t")
 	ax3.set_title("Error absoluto punto a punto")
