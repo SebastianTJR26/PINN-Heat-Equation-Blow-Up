@@ -117,9 +117,9 @@ def mapa_de_calor_y_grafico_3D_para_la_PINN_GRAF(u_φ,X_np,T_np):
 
 def mapa_de_calor_para_Diferencias_finitas_GRAF(u_ψ,Nt,dt):
 	plt.subplot(1, 1, 1)
-	plt.title("Mapa de calor solución diferencias finitas: $u_t = u_{xx} - u^{2}$")
-	plt.imshow(u_ψ,origin='lower', aspect='auto', cmap='jet', extent=[-1, 1, 0, Nt*dt])
-	plt.colorbar(label='u(x,t)')
+	plt.title("Mapa de calor solución diferencias finitas: $u_t = u_{xx}$")
+	plt.imshow(u_ψ,origin='lower', aspect='auto', cmap='jet', extent=[0, 1, 0, Nt*dt])
+	plt.colorbar(label='u(x,t)')                                     #-1	  Nt*dt
 	plt.xlabel('x')
 	plt.ylabel('t')
 
@@ -193,7 +193,7 @@ def PINN_vs_solucion_real(u_φ,u_exact,X_np,T_np):
 	ax1.set_title("Mapa de calor de la solución PINN")
 	fig.colorbar(contour1, ax=ax1, label="Temperatura")
 
-	# Segundo subplot: Diferencias finitas
+	# Segundo subplot: Solución exacta
 	ax2 = fig.add_subplot(132)
 	contour2 = ax2.contourf(X_np, T_np, u_exact, levels=100, cmap='jet')  # Asumiendo que u_case_2 tiene misma dimensión
 	ax2.set_xlabel("Posición x")
@@ -207,6 +207,45 @@ def PINN_vs_solucion_real(u_φ,u_exact,X_np,T_np):
 	ax3.set_xlabel("Posición x")
 	ax3.set_ylabel("Tiempo t")
 	ax3.set_title("Error absoluto punto a punto")
+	fig.colorbar(contour3, ax=ax3, label="Temperatura")
+
+	# Ajustar espaciado y mostrar
+	plt.tight_layout()
+	plt.show()
+
+
+def mapa_PINN_Dif_finitas_Sol_real(u_φ,u_exact,X_np,T_np):
+
+	data_diff = np.load("datos_dif_fin.npz")
+	u_ψ = data_diff["u_ψ"]
+	Nt = data_diff["Nt"]
+	dt = data_diff["dt"]
+	mapa_de_calor_para_Diferencias_finitas_GRAF(u_ψ,Nt,dt)
+	
+	fig = plt.figure(figsize=(15, 5))
+
+	# Primer subplot: Solución PINN
+	ax1 = fig.add_subplot(131)
+	contour1 = ax1.contourf(X_np, T_np, u_φ, levels=100, cmap='jet')
+	ax1.set_xlabel("Posición x")
+	ax1.set_ylabel("Tiempo t")
+	ax1.set_title("Mapa de calor de la solución PINN")
+	fig.colorbar(contour1, ax=ax1, label="Temperatura")
+
+	# Segundo subplot: Solución exacta
+	ax2 = fig.add_subplot(132)
+	contour2 = ax2.contourf(X_np, T_np, u_exact, levels=100, cmap='jet')  # Asumiendo que u_case_2 tiene misma dimensión
+	ax2.set_xlabel("Posición x")
+	ax2.set_ylabel("Tiempo t")
+	ax2.set_title("Mapa de calor solución analitica")
+	fig.colorbar(contour2, ax=ax2, label="Temperatura")
+
+	# Tercer subplot: Diferencias finitas
+	ax3 = fig.add_subplot(133)  # ¡CORREGIDO: era 132, debe ser 133!
+	contour3 = ax3.contourf(X_np, T_np, u_ψ , levels=100, cmap='jet')  # CORREGIDO: u_case_2 - U_pred_np
+	ax3.set_xlabel("Posición x")
+	ax3.set_ylabel("Tiempo t")
+	ax3.set_title("Mapa de calor solución Diferencias Finitas")
 	fig.colorbar(contour3, ax=ax3, label="Temperatura")
 
 	# Ajustar espaciado y mostrar

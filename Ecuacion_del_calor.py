@@ -488,6 +488,9 @@ mapa_de_calor_para_la_solucion_exacta_GRAF(u_exact,X_np,T_np)
 
 PINN_vs_solucion_real(u_φ,u_exact,X_np,T_np)
 
+#Se añadio tambien la comparación con las Diferencias finitas or Instrucción del Profesor Leonardo Chacon
+mapa_PINN_Dif_finitas_Sol_real(u_φ,u_exact,X_np,T_np)
+
 #NOTAS
 
 """
@@ -878,5 +881,15 @@ versión 30 o 1.2
 *se tiene comentado todo lo que hizo, tanto las modificaciones,experimentos y nuevo código que se añado para esta versión
 *por algún motivo, el código en la parte de pintar la distribución de puntos no me dejo, aparece un error de tamaños, pero la verdad no interesa tanto solucionar eso porque ya comprobando el vs con la solución analítica->
 -> y viendo que el error es muy minimo y son casi identicas, no me preocupa graficar esa dsitribución entonces, porque ya se que esta bien con la comparación de la solución real 
+
+"""
+
+"""
+versión 31
+
+*Se añadio la solución tambien de las Diferencias finitas con las condiciones y el nucleo de Dirichlet, para comparar los 3 mapas de calor, esto por instrucción del profesor Leoanrdo Chacon
+*se hicieron unos cambios minimos para que el archivo de (Diferencias_finitas.py) solucionara la ecuación del calor original, al igual se dejo comentado en ese código que se toco y modifico para poder llegar a ello
+*tambien se hicieron unos cambios en (Graficos_PINN.py) para mostrar los 3 mapas, algo muy minusculo y con comentarios sencillos
+*Se corrigieron algunos comentarios que estaban mal en (Graficos_PINN.py), como que el segundo subplot que coloque la solución real, nunca le cambie el comentario que decia (solución diferencias finitas, o algo asi) 
 
 """
