@@ -67,14 +67,18 @@ class PINN(tf.keras.Model):
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 def Creador_de_tensores_GlobalUniforme_IntervalosRandom(minvalx,maxvalx,minvalτ,T_final,Puntos): 
+    beta = 3
     # I Cree los arreglos primero linealmente espaceados
-    X = np.linspace(minvalx, maxvalx, Puntos)
+    
     #(1) SIN PONDERACIÓN ADAPTATIVA
+    X = np.linspace(minvalx, maxvalx, Puntos)
     T = np.linspace(minvalτ, T_final, Puntos)
     
     """#(2) CON PONDERACIÓN ADAPTATIVA
-    Adap = np.linspace(0.0, 1.0, Puntos)
-    T =  T_final * (1.0 - (1.0 - Adap)**2)
+    Adap0 = np.linspace(minvalx, maxvalx, Puntos)
+    X = np.sign(Adap0) * (np.abs(Adap0)**beta)
+    AdapT = np.linspace(0.0, 1.0, Puntos)
+    T =  T_final * (1.0 - (1.0 - AdapT)**beta)
     """
     # II Ahora haga el producto cartesiano entre ellos, para que existan  cordenadas (xi,τi) que cubran todo el dominio, si se deja sin hacer producto cartesiano, 
     # Solo cubrira la diagonal
@@ -850,4 +854,12 @@ versión 32
 *Ahora (x, τ) trabajan Lnealmente espaceadas como se tenia a los inicios de la PINN, porque las DF los necesitan, pero con Puntos aleatorios en cada intervalo porque las PINN los necesitan
 *Todos estos cambios mencionados aqui estan documentos en EDP_loss() y Creador_de_tensores_GlobalUniforme_IntervalosRandom()
 *Aun opción de acumular los puntos a T_final como se hacia antes, o no, eso depende de cuando se esten haciendo los ejercicios de las tablas 
+"""
+
+
+"""
+versión 33
+
+*Acumulaciones en x=0
+
 """
