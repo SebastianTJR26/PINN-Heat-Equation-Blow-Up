@@ -3,7 +3,7 @@ import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
 
 
-def distribucion_dominio_y_condicion_inicial_GRAF(x,τ,x_in,τ_in,u0_func,x_line,u0_line,x_bnL,x_bnR,τ_bn,T_final):
+def distribucion_dominio_y_condicion_inicial_GRAF(x,τ,minvalx,maxvalx,minvalτ,maxvalτ,x_in,τ_in,u0_func,x_line,u0_line,x_bnL,x_bnR,τ_bn,T_blow_up):
 
 	# Figura: distribución (x,τ) + condición inicial
 	fig, axs = plt.subplots(1, 2, figsize=(12, 5))
@@ -14,8 +14,8 @@ def distribucion_dominio_y_condicion_inicial_GRAF(x,τ,x_in,τ_in,u0_func,x_line
 	axs[0].scatter(x_bnR.numpy(),    τ_bn.numpy(),  s=6, alpha=0.8,  label='BC x=+1', color='C2', marker='|')
 	axs[0].set_xlabel('x'); axs[0].set_ylabel('t')
 	axs[0].set_title('Distribución de puntos (PDE, IC y BC)')
-	axs[0].set_xlim(-1.0-0.05, 1.0+0.05)
-	axs[0].set_ylim(-0.02*T_final, 1.02*T_final)
+	axs[0].set_xlim(minvalx-0.05, maxvalx+0.05)
+	axs[0].set_ylim(-0.02*minvalτ, 1.02*maxvalτ)#(-0.02*T_final, 1.02*T_final)
 	axs[0].grid(True, alpha=0.25)
 	axs[0].legend(loc='upper right', fontsize=9)
 	

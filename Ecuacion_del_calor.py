@@ -14,9 +14,14 @@ import random
 #PUNTERO: Menjear arreglos es lo más cercano a trabajar con las direcciones de memoria en python, como necesito cambiar la función de activación
 #Para poder ver como les va a los demas experimentos con otras funciones, se crea una arreglo que contiene solo un dato tipo string en la posición 0 con el nombre de una función de activación
 #Y como es un arreglo, cuando cambie la fcn de activación para una arquitectura, se que la red lo implementara porque "activation" esta hacia la dirección del string de l fcn de activación
-puntero_fcn_activacion = ['tanh'] 
+puntero_fcn_activacion = ['tanh']
 from keras.saving import register_keras_serializable
 
+condicion = input("Activar muestreo adaptativo (S/n):")
+if condicion=='S':
+    puntero_condicion_adaptattiva = ['S']
+else:
+    puntero_condicion_adaptattiva = ['n']    
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 # Para Python y NumPy
 os.environ['PYTHONHASHSEED'] = '0' 
@@ -33,6 +38,8 @@ tf.keras.backend.set_floatx('float64')
 #primer paso, se define como creo mi PINNN, cuantas capaz y neuronas
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+
+    
 class PINN(tf.keras.Model):  
     def __init__(self, layers):
         super(PINN, self).__init__()
@@ -66,20 +73,22 @@ class PINN(tf.keras.Model):
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-def Creador_de_tensores_GlobalUniforme_IntervalosRandom(minvalx,maxvalx,minvalτ,T_final,Puntos): 
-    beta = 3
+def Creador_de_tensores_GlobalUniforme_IntervalosRandom(minvalx,maxvalx,minvalτ,maxvalτ,T_blow_up,Puntos): 
+    beta = 2
     # I Cree los arreglos primero linealmente espaceados
+
+    if puntero_condicion_adaptattiva[0]=='S':      
+        #(2) CON PONDERACIÓN ADAPTATIVA
+        Adap0 = np.linspace(minvalx, maxvalx, Puntos)
+        X = np.sign(Adap0) * (np.abs(Adap0)**beta)
+        AdapT = np.linspace(0.0, 1.0, Puntos)
+        T =  maxvalτ * (1.0 - (1.0 - AdapT)**beta)
+    else:
+        #(1) SIN PONDERACIÓN ADAPTATIVA
+        X = np.linspace(minvalx, maxvalx, Puntos)
+        T = np.linspace(minvalτ, maxvalτ, Puntos)
+
     
-    #(1) SIN PONDERACIÓN ADAPTATIVA
-    X = np.linspace(minvalx, maxvalx, Puntos)
-    T = np.linspace(minvalτ, T_final, Puntos)
-    
-    """#(2) CON PONDERACIÓN ADAPTATIVA
-    Adap0 = np.linspace(minvalx, maxvalx, Puntos)
-    X = np.sign(Adap0) * (np.abs(Adap0)**beta)
-    AdapT = np.linspace(0.0, 1.0, Puntos)
-    T =  T_final * (1.0 - (1.0 - AdapT)**beta)
-    """
     # II Ahora haga el producto cartesiano entre ellos, para que existan  cordenadas (xi,τi) que cubran todo el dominio, si se deja sin hacer producto cartesiano, 
     # Solo cubrira la diagonal
     x_cart, τ_cart = np.meshgrid(X, T)
@@ -141,7 +150,7 @@ TOTAL PARA CADA UNO (x) y (τ) = 19000 puntos
 
 #La solución de la Ecuación Diferencial dada por la PINN se denoratara por: ---(u_φ)---
 
-def EDP_loss(model, x, τ, alpha_pde,beta_pde,T_final,epsilon,gamma):
+def EDP_loss(model, x, τ, alpha_pde,beta_pde,T_blow_up,epsilon,gamma):
     # tf.GradientTape es una herramienta de TensorFlow para calcular derivadas (gradientes) de operaciones con respecto a sus variables.
     # with asegura que todas las operaciones dentro de él sean "grabadas" por GradientTape, para que luego se puedan calcular sus gradientes.
     # El parámetro persistent=True permite que la cinta (tape) sea reutilizable para calcular múltiples gradientes. 
@@ -151,7 +160,7 @@ def EDP_loss(model, x, τ, alpha_pde,beta_pde,T_final,epsilon,gamma):
     # Esto es necesario cuando variable no es un tensor entrenable (es decir, no es un parámetro de la red neuronal, 
     # como los pesos o biases), pero aún así necesitas calcular derivadas con respecto a esa variable.
 
-    w_ti = 1.0 / tf.pow(T_final - τ + epsilon, gamma) #como esto no se esta derivando, no es necesario su verificación
+    w_ti = 1.0 / tf.pow(T_blow_up - τ + epsilon, gamma) #como esto no se esta derivando, no es necesario su verificación
     
     #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     #Este es al algoritomo de las Diferencias Finitas para la PINN
@@ -170,15 +179,20 @@ def EDP_loss(model, x, τ, alpha_pde,beta_pde,T_final,epsilon,gamma):
     #<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
   
                                                                     #model(f)=u_φ que tenia antes, solo que ahora me toca dejarlo asi 
-    residuo_edp = du_dτ - T_final*tf.math.exp(-τ)*( d2u_dx2 + tf.pow(model(f),2) )  #nuevo residuo del cambio de variable  u_φ(x,t)->u_φ(x,τ) 
+    residuo_edp = du_dτ - T_blow_up*tf.math.exp(-τ)*( d2u_dx2 + tf.pow(model(f),2) )  #nuevo residuo del cambio de variable  u_φ(x,t)->u_φ(x,τ) 
     
-    #RETURN 1 SIN PONDERACIÓN ADAPTATIVA
-    return tf.reduce_mean((residuo_edp)**2) 
+    if puntero_condicion_adaptattiva[0]=='S':
+
+        #RETURN 2 CON PONDERACIÓN ADAPTATIVA
+        return tf.reduce_sum(w_ti * tf.reduce_mean((residuo_edp)**2)) / tf.reduce_sum(w_ti) #-> (Σ w_ti * ||R||²)/ Σw_ti ESTA BIEN,  SI CUMPLE BIEN LA DEFINICIÓN
+        #return tf.reduce_sum(w_ti * tf.square(residuo_edp)) / tf.reduce_sum(w_ti) #-> (Σ w_ti * √R)/ Σw_ti ESTA MAL, NO ESTA SACANDO LA NORMA AL CUADRADO
+
+    else:
+
+        #RETURN 1 SIN PONDERACIÓN ADAPTATIVA
+        return tf.reduce_mean((residuo_edp)**2) 
     
-    """#RETURN 2 CON PONDERACIÓN ADAPTATIVA
-    return tf.reduce_sum(w_ti * tf.reduce_mean((residuo_edp)**2)) / tf.reduce_sum(w_ti) #-> (Σ w_ti * ||R||²)/ Σw_ti ESTA BIEN,  SI CUMPLE BIEN LA DEFINICIÓN
-    """
-    #return tf.reduce_sum(w_ti * tf.square(residuo_edp)) / tf.reduce_sum(w_ti) #-> (Σ w_ti * √R)/ Σw_ti ESTA MAL, NO ESTA SACANDO LA NORMA AL CUADRADO
+
     
 # tf.reduce_mean((residuo_edp)**2) = tf.square(residuo_edp)
 
@@ -226,33 +240,34 @@ beta_pde = tf.constant(1.0, dtype=tf.float64)                    #POR ESO SIEMPR
 gamma = tf.constant(2.0, dtype=tf.float64)
 
  
-T_final = 1.0    # ANTES(Este es el tiempo estimado de la explosión para u^2 en el experimento númerico)
-                 # AHORA(ya no va a 0.3170, sino simula τ ∈ [0,τ_max] i.e τ>0, porque el T de la explosión con el cambio de variable
-                 # Esta ahora en el infinito 
+T_blow_up = 0.3170  #CORRECIÓN: T_final nunca debio cambiar el valor de 0.3170, ya que el t0 dela artitulo es el tiempo finito de exploción y por ende la ecuación cuando se hizoo el cambio de variable
+                    #Debe de entender que viene de una explosión finitia y en algun lado debe estar porque ambas ecuaciones estan correlacionadas, entones aunque tao vaya a infinito, T_final debio ser siempre 0.3170, ahora llamado T_blow_up
 
 #Aqui definimos la cantidad de puntos para la PINN
 Puntos_dom = 71   #71x71 = 5041 + 5040 de los números aleatorios en cada sub intervalo = 10081
 Puntos_ic= 1000
 Puntos_bn = 500
+# x ∈ (-1,1), τ>0 los imtervalos según la EDP con cambio de variable
+minvalx = -1.0
+maxvalx = 1.0
+minvalτ = 0.0
+maxvalτ = 2.0
 
-print("k") 
-# Para los datos de la PDE, x ∈ (-1,1) τ>0, como de todos modos toca definir un intervalo final en τ, se dejara hasta el tiempo donde se supone que explota
-# Eso segun el experimento númerico
 
-x, τ = Creador_de_tensores_GlobalUniforme_IntervalosRandom(-1.0,1.0,0.0,T_final,Puntos_dom)
+x, τ = Creador_de_tensores_GlobalUniforme_IntervalosRandom(minvalx,maxvalx,minvalτ,maxvalτ,T_blow_up,Puntos_dom)
 
 
 # Para los datos en la condición inicial, x_in esta igual de definido que en x, es decir x_in ∈ (-1,1)
 # para τ_in todos los puntos generados son cero, puesto que comienzo en u(x,0), es por eso t=0
-x_in = tf.random.uniform((Puntos_ic, 1), minval=-1.0, maxval=1.0, dtype=tf.float64)
+x_in = tf.random.uniform((Puntos_ic, 1), minval=minvalx, maxval=maxvalx, dtype=tf.float64)
 τ_in = tf.zeros_like(x_in, dtype=tf.float64) # en u(x_in,0) genere la cantidad de puntos donde esta definido x_in
 u0_func = funcion_valor_inicial(x_in) 
 
 #Left, Righ
 # Para los datos en la fronetra
-τ_bn  = tf.random.uniform((Puntos_bn, 1), minval=0.0, maxval=T_final, dtype=tf.float64) # porque como cuando definifimos x_in arriba, el x de la condición inicial esta (-1,1), el t_bn esta creciendo, es decir ∈ t>0 (leer el articulo para comprenderlo)
-x_bnL = tf.ones_like(τ_bn, dtype=tf.float64) * -1.0 # en u(-1,τ_bn) genere la cantidad de puntos de t_bn para la frontera izquierda 
-x_bnR = tf.ones_like(τ_bn, dtype=tf.float64) * 1.0#  en u(1,τ_bn) genere la cantidad de puntos de t_bn para la frontera derecha             
+τ_bn  = tf.random.uniform((Puntos_bn, 1), minval=minvalτ, maxval=maxvalτ, dtype=tf.float64) # porque como cuando definifimos x_in arriba, el x de la condición inicial esta (-1,1), el t_bn esta creciendo, es decir ∈ t>0 (leer el articulo para comprenderlo)
+x_bnL = tf.ones_like(τ_bn, dtype=tf.float64) * minvalx#*-1  en u(-1,τ_bn) genere la cantidad de puntos de t_bn para la frontera izquierda 
+x_bnR = tf.ones_like(τ_bn, dtype=tf.float64) * maxvalx#*1  en u(1,τ_bn) genere la cantidad de puntos de t_bn para la frontera derecha             
 u_bn_func  = tf.zeros_like(τ_bn, dtype=tf.float64) # u(-1,τ_bn)=u(1,τ_bn)=0 para la función en la frontera, genere al comienzo, es decir en t=0, los puntos generados
 
 #NOTA: para entender como se definio esta data, se debe de leer el articulo de la explosión númerica del blow up y ver como esta defnido el (x,τ) para el dominio de la PDE, en las condiciones iniciales y la frontera
@@ -262,9 +277,9 @@ u_bn_func  = tf.zeros_like(τ_bn, dtype=tf.float64) # u(-1,τ_bn)=u(1,τ_bn)=0 p
 
 
 
-x_line = tf.linspace(tf.constant(-1.0, tf.float64), tf.constant(1.0, tf.float64), Puntos_ic)
+x_line = tf.linspace(tf.constant(minvalx, tf.float64), tf.constant(maxvalx, tf.float64), Puntos_ic)
 u0_line = funcion_valor_inicial(tf.reshape(x_line, (-1,1)))
-distribucion_dominio_y_condicion_inicial_GRAF(x,τ,x_in,τ_in,u0_func,x_line,u0_line,x_bnL,x_bnR,τ_bn,T_final)
+distribucion_dominio_y_condicion_inicial_GRAF(x,τ,minvalx,maxvalx,minvalτ,maxvalτ,x_in,τ_in,u0_func,x_line,u0_line,x_bnL,x_bnR,τ_bn,T_blow_up)
 
 epsilon = 1e-3 #para cuando T_final=τ, y no divida por 0, un valor demasiado minusculo para que no altere lo demas
 
@@ -292,6 +307,7 @@ optimizer = tf.keras.optimizers.Adam(learning_rate=lr_sched) #(4)5e-4
 
 #(3)ENTRENAMIENTO! (ACTUALIZACIÓN, se adiciona en el código la forma de guardar los mejores pesos entrenados)
 best_epoch = 0  #guardamos la epoca donde mejor fue entrenado el modelo
+#Capturar tiempo
 #best_loss = 50000000.0 #guardamos el función de perdida más baja que dio, para saber cual fue el mejor entrenamiento, comenzamos en un valor muy alto para hacer comparación
 
 w_pde = 0.3  # Prioriza la pérdida de la EDP
@@ -304,14 +320,13 @@ History_loss_3 = []
 History_total_loss= []
 
 
-#Capturar tiempo
 start = time.time()
 best_loss = 50.0 
 for epoch in range(1, epochs+1):
 
     with tf.GradientTape() as tape:
 
-        loss_1 = EDP_loss(model, x, τ, alpha_pde,beta_pde,T_final,epsilon,gamma)
+        loss_1 = EDP_loss(model, x, τ, alpha_pde,beta_pde,T_blow_up,epsilon,gamma)
 
         loss_2 = Valores_Iniciales_loss(model, x_in, τ_in, u0_func)
 
@@ -344,7 +359,7 @@ for epoch in range(1, epochs+1):
         ], axis=1)
         u_pred = model(xτ)                                                  #al parecer, esto me esta diciendo en que época obtuve mi blow-up, tengo que ver si hubo una variación brusca
         intensidad= tf.reduce_max(tf.abs(u_pred)).numpy()
-        print("intensidad en la epoca ", epoch," :",intensidad)
+        print("u_max en la epoca ", epoch," :",intensidad)
 
         
 
@@ -365,8 +380,8 @@ print("mejor epoca de entrenamiento:", best_epoch)
 #cuarto paso, mostramos vizualisaciones de los datos
 #---------------------------------------------------------------------------------------------
 #oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
-x_vis = tf.linspace(-1.0, 1.0, 100)
-τ_vis = tf.linspace(0.0, T_final, 250)
+x_vis = tf.linspace(minvalx, maxvalτ, 100)
+τ_vis = tf.linspace(minvalτ, maxvalτ, 250)
 # ESTO DE ACA ES LO QUE PERMITE VIZUALIZAR BIEN LA MALLA 23/03/2026, 
 # * Uno de los errores que se estaba cometiendo al querer visualizar la solución de u_φ era que antes se mandaba todos los millones de puntos a graficar
 # Lo cual no era necesario, con unos pocos y estableciendo los (x) y (t) definidos de la EDP ya sale bien dibujado
@@ -423,7 +438,7 @@ if respuesta == 'S':
 
 # NUEVOS GRAFICOS CONCATENADOS
 
-asintota = 600
+asintota = 400
 
 funciones_de_perdida_GRAF(x,asintota,History_loss_1,History_loss_2,History_loss_3,History_total_loss)
 
@@ -861,5 +876,16 @@ versión 32
 versión 33
 
 *Acumulaciones en x=0
+
+"""
+
+"""
+versión 34 (Correción de la 32 y cuando todavia era DA)
+
+*Un error que se tenia cuando aumentaba el limite de tao de 1,2,...,n era que el t0 debio ser siempre el tiempo de explosión finito de la ecuación original en (x,t)
+*Claro que tenia mis sospechas desde que implemente el residuo, pero hasta que el al profe Leonardo lo confirmo me di cuenta que desde la implementación con DA los resultados no estan bien y esas tablas tampoco
+*Ahora fue correjido (SOLO LA DE DF), la de diferencias automaticas se creara una versión alterna y luego hacer de nuevo las tablas
+*se agreggo una forma más sencillas ara amrcar los intervalos y no tener que cambiarlos manualmente para cada variable
+*Se agrego una opción para desde la terminal se quiera activar el muestreo adaptativo o no
 
 """
