@@ -80,7 +80,7 @@ class PINN(tf.keras.Model):
 
 #La solución de la Ecuación Diferencial dada por la PINN se denoratara por: ---(u_φ)---
 
-def EDP_loss(model, x, τ, alpha_pde,beta_pde,T_blow_up,epsilon,gamma):
+def EDP_loss(model, x, τ, T_blow_up, epsilon, gamma):
     # tf.GradientTape es una herramienta de TensorFlow para calcular derivadas (gradientes) de operaciones con respecto a sus variables.
     # with asegura que todas las operaciones dentro de él sean "grabadas" por GradientTape, para que luego se puedan calcular sus gradientes.
     # El parámetro persistent=True permite que la cinta (tape) sea reutilizable para calcular múltiples gradientes. 
@@ -169,11 +169,9 @@ def funcion_valor_inicial(x):
     return 5.0 * (1.0 - tf.square(x))  # MI FUNCIÓN DE PROBLEMA DE VALOR INICIAL
 
 
-# Coeficiente de difusión del calor (parametro físico)
-alpha_pde = tf.constant(1.0, dtype=tf.float64)                    #ESTO DE ACÁ, LOS ALPHA Y BETHA ESTAN SIENDO MUY IMPORTANTES, MI BETHA PEQUEÑO NO PERMITIA QUE DETECTARA EL  OP NO LINEAL, TODO SE ESTABA AJUSTANDO ERA A LA EDP SIN TENER ENCUENTA EL OP NO LINEAL
-beta_pde = tf.constant(1.0, dtype=tf.float64)                    #POR ESO SIEMPRE SALIA LO MISMO, AUNQUE ESTAMOS AUN EN FASE DE PRUEBAS
+# Constante de la ponderación del muestreo adaptativo
 gamma = tf.constant(2.0, dtype=tf.float64)
- #PINN LEONARDO MIRAR
+ 
  
 T_blow_up = 0.3170  #CORRECIÓN: T_final nunca debio cambiar el valor de 0.3170, ya que el t0 dela artitulo es el tiempo finito de exploción y por ende la ecuación cuando se hizoo el cambio de variable
                     #Debe de entender que viene de una explosión finitia y en algun lado debe estar porque ambas ecuaciones estan correlacionadas, entones aunque tao vaya a infinito, T_final debio ser siempre 0.3170, ahora llamado T_blow_up
@@ -186,14 +184,15 @@ Puntos_bn = 500
 minvalx = -1.0
 maxvalx = 1.0
 minvalτ = 0.0
-maxvalτ = 1.0
+maxvalτ = 2.0
 
 # Para los datos de la PDE, x ∈ (-1,1) τ>0, como de todos modos toca definir un intervalo final en τ, se dejara hasta el tiempo donde se supone que explota
 # Eso segun el experimento númerico
 x = tf.random.uniform((Puntos_dom, 1), minval=minvalx, maxval=maxvalx, dtype=tf.float64)
 if puntero_condicion_adaptattiva[0]=='S':
-    τ = maxvalτ*(1-tf.random.uniform((Puntos_dom, 1),minval = minvalτ , maxval = maxvalτ, dtype=tf.float64)**2) #PESOS PONDERADOS ADAPTATIVAMENTE (2)
-     
+    τ = maxvalτ*(1-tf.random.uniform((Puntos_dom, 1),minval = 0.0 , maxval = 1.0, dtype=tf.float64)**2) #PESOS PONDERADOS ADAPTATIVAMENTE (2)
+    #τ = maxvalτ*(1-tf.random.uniform((Puntos_dom, 1),minval = minvalτ , maxval = maxvalτ, dtype=tf.float64)**2)
+    #ESTA MAL ESTA DEFINICIÓN!! YA QUE LA ORIGINAL ES : T_final*(1-Uniform(0,1)^B), y esta va de (minvalτ,maxvalτ), mientras que maxvalτ=1 se mantiene bien, pero cuando cambiemos ha maxvalτ>1 se rompe, por eso siempre debe ser (0,1)
 else:
     τ = tf.random.uniform((Puntos_dom, 1), minval=minvalτ,  maxval=maxvalτ,  dtype=tf.float64)           #τ DEFINIDO NORMALMENTE           (1)   
     
@@ -205,7 +204,7 @@ x_in = tf.random.uniform((Puntos_ic, 1), minval=minvalx, maxval=maxvalx, dtype=t
 u0_func = funcion_valor_inicial(x_in) 
 
 #Left, Righ
-# Para los datos en la fronetra
+# Para los datos en la frontera
 τ_bn  = tf.random.uniform((Puntos_bn, 1), minval=minvalτ, maxval=maxvalτ, dtype=tf.float64) # porque como cuando definifimos x_in arriba, el x de la condición inicial esta (-1,1), el t_bn esta creciendo, es decir ∈ t>0 (leer el articulo para comprenderlo)
 x_bnL = tf.ones_like(τ_bn, dtype=tf.float64) * minvalx#*-1  en u(-1,τ_bn) genere la cantidad de puntos de t_bn para la frontera izquierda 
 x_bnR = tf.ones_like(τ_bn, dtype=tf.float64) * maxvalx#*1  en u(1,τ_bn) genere la cantidad de puntos de t_bn para la frontera derecha             
@@ -266,7 +265,7 @@ for epoch in range(1, epochs+1):
 
     with tf.GradientTape() as tape:
 
-        loss_1 = EDP_loss(model, x, τ, alpha_pde,beta_pde,T_blow_up,epsilon,gamma)
+        loss_1 = EDP_loss(model, x, τ, T_blow_up, epsilon, gamma)
 
         loss_2 = Valores_Iniciales_loss(model, x_in, τ_in, u0_func)
 
@@ -767,4 +766,10 @@ CORRECCIÓN VERSIÓN 28
 * Se creo una opción para decidir si activar el muestreo adaptativo o no desde la consola, esto es para no tener que hacerlo desde el código y sea más comodo
 
 
+"""
+
+"""
+Una Ultimo ajuste
+*En la versión de correción aun quedo algo mal, estaba mal definido el muestreo adaptativo que ya quedo corregido y comentado en al linea correspondiente del código
+*se elimino alpha_pde y betha_pde (creo que asi estaban definidos), ya no estaban aportando nada a la nueva fisica
 """
