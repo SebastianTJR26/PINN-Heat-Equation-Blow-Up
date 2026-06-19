@@ -1,8 +1,8 @@
-import numpy as np
+import numps np
 from Graficos_PINN import *
 
 
-# Definir parámetros
+# Definir parámetrosy a
 L = 2  # Longitud del dominio (de -1 a 1)
 Nx = 100  # Número de puntos espaciales
 Nt = 250  # Número de pasos temporales
