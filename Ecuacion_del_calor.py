@@ -119,8 +119,12 @@ def EDP_loss(model, x, τ, T_blow_up, epsilon, gamma):
     
     if puntero_condicion_adaptattiva[0]=='S':
         #RETURN 2 CON PONDERACIÓN ADAPTATIVA
-        return tf.reduce_sum(w_ti * tf.reduce_mean((residuo_edp)**2)) / tf.reduce_sum(w_ti) #-> (Σ w_ti * ||R||²)/ Σw_ti ESTA BIEN,  SI CUMPLE BIEN LA DEFINICIÓN
+        #return tf.reduce_mean((residuo_edp)**2) 
+        #return tf.reduce_sum(w_ti * tf.reduce_mean((residuo_edp)**2)) / tf.reduce_sum(w_ti) #-> (Σ w_ti * ||R||²)/ Σw_ti ESTA BIEN,  SI CUMPLE BIEN LA DEFINICIÓN
         #return tf.reduce_sum(w_ti * tf.square(residuo_edp)) / tf.reduce_sum(w_ti) #-> (Σ w_ti * √R)/ Σw_ti ESTA MAL, NO ESTA SACANDO LA NORMA AL CUADRADO
+
+        # Da igual el residuo que escojas acá, para el cambio de variable noe sta funcinando bien el muestreo adaptativo, y menos los pesos w_ti
+        # Pero recuerda aquivar uno
 
     else:
         #RETURN 1 SIN PONDERACIÓN ADAPTATIVA
@@ -166,7 +170,7 @@ def Frontera_loss(model, x_bnL, x_bnR , τ_bn, u_bn_func):
 #...........................................................................................................................................................................................................................................................................
 
 def funcion_valor_inicial(x):
-    return 5.0 * (1.0 - tf.square(x))  # MI FUNCIÓN DE PROBLEMA DE VALOR INICIAL
+    return 5.0 * (1.0 - tf.pow(x,2))  # MI FUNCIÓN DE PROBLEMA DE VALOR INICIAL
 
 
 # Constante de la ponderación del muestreo adaptativo
@@ -319,7 +323,7 @@ print("mejor epoca de entrenamiento:", best_epoch)
 #cuarto paso, mostramos vizualisaciones de los datos
 #---------------------------------------------------------------------------------------------
 #oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
-x_vis = tf.linspace(minvalx, maxvalτ, 100)
+x_vis = tf.linspace(minvalx, maxvalx, 100)#tf.linspace(minvalx, maxvalτ, 100) mira como estaba definida, TENIAS maxvalτ EN EL TENSOR DE x !! XD
 τ_vis = tf.linspace(minvalτ, maxvalτ, 250)
 # ESTO DE ACA ES LO QUE PERMITE VIZUALIZAR BIEN LA MALLA 23/03/2026, 
 # * Uno de los errores que se estaba cometiendo al querer visualizar la solución de u_φ era que antes se mandaba todos los millones de puntos a graficar
@@ -772,4 +776,13 @@ CORRECCIÓN VERSIÓN 28
 Una Ultimo ajuste
 *En la versión de correción aun quedo algo mal, estaba mal definido el muestreo adaptativo que ya quedo corregido y comentado en al linea correspondiente del código
 *se elimino alpha_pde y betha_pde (creo que asi estaban definidos), ya no estaban aportando nada a la nueva fisica
+"""
+
+
+"""
+un juste más :/
+*Se que sonara repetitivo, pero se encontro un error en los mapas de calor que cuando se extendia tao, , se modificaba el (-1,1) en x tambien, porque estaba usando el maxtau donde iba el tensor de x ._. el cual ya fue corregido
+*la PINN crece un poco más cuando no esta amarrada a los pesos, aun asi los dejare en el código
+*El muestreo adaptativo hasta el momento solo sirve para la PINN antes del cambio de variable, el problema original, para este no esta funcionando bien
+*se cambio tf.square(x) por tf.pow(x,2), es lo mismo, pero prefiero este
 """
