@@ -5,7 +5,7 @@ from Graficos_PINN import *
 # Definir parámetros
 L = 2  # Longitud del dominio (de -1 a 1)
 Nx = 100  # Número de puntos espaciales
-Nt = 250  # Número de pasos temporales
+Nt = 500  # Número de pasos temporales
 dx = 2*L / (Nx - 1)  # Tamaño de paso en x
 dt = 5e-4  # Tamaño de paso en t
 x = np.linspace(-1, 1, Nx)  # Espacio

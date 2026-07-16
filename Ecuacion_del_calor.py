@@ -380,8 +380,8 @@ print("mejor epoca de entrenamiento:", best_epoch)
 #cuarto paso, mostramos vizualisaciones de los datos
 #---------------------------------------------------------------------------------------------
 #oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
-x_vis = tf.linspace(minvalx, maxvalτ, 100)
-τ_vis = tf.linspace(minvalτ, maxvalτ, 250)
+x_vis = tf.linspace(minvalx, maxvalx, 100)#tf.linspace(minvalx, maxvalτ, 100) mira como estaba definida, TENIAS maxvalτ EN EL TENSOR DE x !! XD
+τ_vis = tf.linspace(minvalτ, maxvalτ, 500)
 # ESTO DE ACA ES LO QUE PERMITE VIZUALIZAR BIEN LA MALLA 23/03/2026, 
 # * Uno de los errores que se estaba cometiendo al querer visualizar la solución de u_φ era que antes se mandaba todos los millones de puntos a graficar
 # Lo cual no era necesario, con unos pocos y estableciendo los (x) y (t) definidos de la EDP ya sale bien dibujado
