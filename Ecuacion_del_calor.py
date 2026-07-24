@@ -231,7 +231,7 @@ def Frontera_loss(model, x_bnL, x_bnR , τ_bn, u_bn_func):
 #...........................................................................................................................................................................................................................................................................
 
 def funcion_valor_inicial(x):
-    return 5.0 * (1.0 - tf.square(x))  # MI FUNCIÓN DE PROBLEMA DE VALOR INICIAL
+    return 5.0 * (1.0 - tf.pow(x,2))  # MI FUNCIÓN DE PROBLEMA DE VALOR INICIAL
 
 
 # Coeficiente de difusión del calor (parametro físico)
@@ -251,7 +251,7 @@ Puntos_bn = 500
 minvalx = -1.0
 maxvalx = 1.0
 minvalτ = 0.0
-maxvalτ = 2.0
+maxvalτ = 1.0
 
 
 x, τ = Creador_de_tensores_GlobalUniforme_IntervalosRandom(minvalx,maxvalx,minvalτ,maxvalτ,T_blow_up,Puntos_dom)
@@ -380,7 +380,7 @@ print("mejor epoca de entrenamiento:", best_epoch)
 #cuarto paso, mostramos vizualisaciones de los datos
 #---------------------------------------------------------------------------------------------
 #oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
-x_vis = tf.linspace(minvalx, maxvalx, 100)#tf.linspace(minvalx, maxvalτ, 100) mira como estaba definida, TENIAS maxvalτ EN EL TENSOR DE x !! XD
+x_vis = tf.linspace(minvalx, maxvalx, 100)#tf.linspace(minvalx, maxvalτ, 100) mira como estaba definida, TENIAS maxvalτ EN EL TENSOR DE x !! XD (PP)
 τ_vis = tf.linspace(minvalτ, maxvalτ, 500)
 # ESTO DE ACA ES LO QUE PERMITE VIZUALIZAR BIEN LA MALLA 23/03/2026, 
 # * Uno de los errores que se estaba cometiendo al querer visualizar la solución de u_φ era que antes se mandaba todos los millones de puntos a graficar
@@ -888,4 +888,15 @@ versión 34 (Correción de la 32 y cuando todavia era DA)
 *se agreggo una forma más sencillas ara amrcar los intervalos y no tener que cambiarlos manualmente para cada variable
 *Se agrego una opción para desde la terminal se quiera activar el muestreo adaptativo o no
 
+"""
+
+
+"""
+versión 35
+
+* Se hizo una correción a los mapas de calor que hacia extender incorrectamente el dominio en (x) cuando crecia (tao), ver (PP) arriba, ya esta bien
+* Aunque se este concentrando puntos al final de (tao) y en x=0, con o sin los pesos w_ti no se esta obteniendo buen resultado
+* Esta deberia ser la versión final de la PINN almenos que se peuda corregir lo del muestreo
+* Se dejan el mapa de diferencias finitas (x_vis,τ_vis)=(100,500) apra ver la explosión, es la recomendación de Brian
+* La razón por la que la abrra de calor del mapa y el u_max no coincidene s porque el tensor que se envia al model viene de los (x_vis,τ_vis), pero ajustar eso para que coincidan esta un poco complicado y tampoco creo que valga la pena hacerlo
 """
