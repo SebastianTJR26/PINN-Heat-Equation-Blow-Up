@@ -119,7 +119,7 @@ def EDP_loss(model, x, τ, T_blow_up, epsilon, gamma):
     
     if puntero_condicion_adaptattiva[0]=='S':
         #RETURN 2 CON PONDERACIÓN ADAPTATIVA
-        #return tf.reduce_mean((residuo_edp)**2) 
+        return tf.reduce_mean((residuo_edp)**2) 
         #return tf.reduce_sum(w_ti * tf.reduce_mean((residuo_edp)**2)) / tf.reduce_sum(w_ti) #-> (Σ w_ti * ||R||²)/ Σw_ti ESTA BIEN,  SI CUMPLE BIEN LA DEFINICIÓN
         #return tf.reduce_sum(w_ti * tf.square(residuo_edp)) / tf.reduce_sum(w_ti) #-> (Σ w_ti * √R)/ Σw_ti ESTA MAL, NO ESTA SACANDO LA NORMA AL CUADRADO
 
@@ -188,7 +188,7 @@ Puntos_bn = 500
 minvalx = -1.0
 maxvalx = 1.0
 minvalτ = 0.0
-maxvalτ = 2.0
+maxvalτ = 1.0
 
 # Para los datos de la PDE, x ∈ (-1,1) τ>0, como de todos modos toca definir un intervalo final en τ, se dejara hasta el tiempo donde se supone que explota
 # Eso segun el experimento númerico
@@ -324,7 +324,7 @@ print("mejor epoca de entrenamiento:", best_epoch)
 #---------------------------------------------------------------------------------------------
 #oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
 x_vis = tf.linspace(minvalx, maxvalx, 100)#tf.linspace(minvalx, maxvalτ, 100) mira como estaba definida, TENIAS maxvalτ EN EL TENSOR DE x !! XD
-τ_vis = tf.linspace(minvalτ, maxvalτ, 250)
+τ_vis = tf.linspace(minvalτ, maxvalτ, 325)
 # ESTO DE ACA ES LO QUE PERMITE VIZUALIZAR BIEN LA MALLA 23/03/2026, 
 # * Uno de los errores que se estaba cometiendo al querer visualizar la solución de u_φ era que antes se mandaba todos los millones de puntos a graficar
 # Lo cual no era necesario, con unos pocos y estableciendo los (x) y (t) definidos de la EDP ya sale bien dibujado
@@ -785,4 +785,15 @@ un juste más :/
 *la PINN crece un poco más cuando no esta amarrada a los pesos, aun asi los dejare en el código
 *El muestreo adaptativo hasta el momento solo sirve para la PINN antes del cambio de variable, el problema original, para este no esta funcionando bien
 *se cambio tf.square(x) por tf.pow(x,2), es lo mismo, pero prefiero este
+"""
+
+
+"""
+versión 29 de la PINN con cambio de variable (estable)
+
+* En esta versión se aplico el algoritmo de las Diferencias finitas apra resolver tambien el problema de cambio de variable, debido a que estaba resolviendo el problema anterior y en el momento de comparar los objetos no eran los adecuados
+* esta versión deberia ser la final, pero el muestreo adaptativo aun esta por definirse haber si funciona o no, por el momento aun no da resultados favorables
+
+"""
+
 """

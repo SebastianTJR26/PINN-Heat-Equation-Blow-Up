@@ -99,7 +99,7 @@ def mapa_de_calor_y_grafico_3D_para_la_PINN_GRAF(u_φ,X_np,T_np):
 	ax1.set_xlabel('Posición x')
 	ax1.set_ylabel('Tiempo τ')
 	ax1.set_zlabel('Solución u(x,τ)')
-	ax1.set_title('Solución de la EDP con PINN, con U^2' )
+	ax1.set_title('Solución de la EDP con PINN cambio de variable, con U^2' )
 
 	# --- Subplot 2: Mapa de calor ---
 	ax2 = fig.add_subplot(1, 2, 2)
@@ -107,7 +107,7 @@ def mapa_de_calor_y_grafico_3D_para_la_PINN_GRAF(u_φ,X_np,T_np):
 	fig.colorbar(contour, ax=ax2, label="Temperatura")
 	ax2.set_xlabel("Posición x")
 	ax2.set_ylabel("Tiempo τ")
-	ax2.set_title("Mapa de calor de la solución PINN, con U^2")
+	ax2.set_title("Mapa de calor de la solución PINN cambio de variable, con U^2")
 
 	plt.tight_layout()
 	plt.show()
@@ -115,11 +115,11 @@ def mapa_de_calor_y_grafico_3D_para_la_PINN_GRAF(u_φ,X_np,T_np):
 
 
 
-def mapa_de_calor_para_Diferencias_finitas_GRAF(u_ψ,Nt,dt):
+def mapa_de_calor_para_Diferencias_finitas_GRAF(u_ψ,maxvalτ):
 	plt.subplot(1, 1, 1)
-	plt.title("Mapa de calor solución diferencias finitas: $u_t = u_{xx} - u^{2}$")
-	plt.imshow(u_ψ,origin='lower', aspect='auto', cmap='jet', extent=[-1, 1, 0, Nt*dt])
-	plt.colorbar(label='u(x,τ)')
+	plt.title("Mapa de calor solución diferencias finitas: $u_τ = t_0e^{-τ}(u_{xx} + u^{2})$")
+	plt.imshow(u_ψ,origin='lower', aspect='auto', cmap='jet', extent=[-1, 1, 0, maxvalτ])
+	plt.colorbar(label='u(x,τ)')							# Deberia pasarle tambien los máx y min de x, y el de tau, pero como por defecto siempre estan asi no veo la necesidad de cambiarlo, solo el máx de tau es el unico que si puede cambiar
 	plt.xlabel('x')
 	plt.ylabel('τ')
 
@@ -131,9 +131,8 @@ def mapa_de_calor_para_Diferencias_finitas_GRAF(u_ψ,Nt,dt):
 def PINN_vs_Diferencias_finitas_GRAF(u_φ,X_np,T_np):
 	data_diff = np.load("datos_dif_fin.npz")
 	u_ψ = data_diff["u_ψ"]
-	Nt = data_diff["Nt"]
-	dt = data_diff["dt"]
-	mapa_de_calor_para_Diferencias_finitas_GRAF(u_ψ,Nt,dt)
+	maxvalτ = data_diff["maxvalτ"]
+	mapa_de_calor_para_Diferencias_finitas_GRAF(u_ψ,maxvalτ)
 
 
 	fig = plt.figure(figsize=(15, 5))
@@ -143,7 +142,7 @@ def PINN_vs_Diferencias_finitas_GRAF(u_φ,X_np,T_np):
 	contour1 = ax1.contourf(X_np, T_np, u_φ, levels=100, cmap='jet')
 	ax1.set_xlabel("Posición x")
 	ax1.set_ylabel("Tiempo τ")
-	ax1.set_title("Mapa de calor de la solución PINN")
+	ax1.set_title("Mapa de calor de la solución PINN cambio de variable")
 	fig.colorbar(contour1, ax=ax1, label="Temperatura")
 
 	# Segundo subplot: Diferencias finitas
