@@ -172,8 +172,8 @@ gamma = tf.constant(2.0, dtype=tf.float64)
 T_final = 0.3170 # Este es el tiempo estimado de la explosión para u^2 en el experimento númerico
 
 #Aqui definimos la cantidad de puntos para la PINN
-Puntos_dom = 1000
-Puntos_ic= 500
+Puntos_dom = 1500
+Puntos_ic= 1000
 Puntos_bn = 500
 
 # Para los datos de la PDE, x ∈ (-1,1) t>0, como de todos modos toca definir un intervalo final en t, se dejara hasta el tiempo donde se supone que explota
@@ -191,7 +191,7 @@ u0_func = funcion_valor_inicial(x_in)
 #Left, Righ
 # Para los datos en la fronetra
 t_bn  = tf.random.uniform((Puntos_bn, 1), minval=0.0, maxval=1.0, dtype=tf.float64) # porque como cuando definifimos x_in arriba, el x de la condición inicial esta (-1,1), el t_bn esta creciendo, es decir ∈ t>0 (leer el articulo para comprenderlo)
-x_bnL = tf.zeros_like(t_bn, dtype=tf.float64) * -1.0 # en u(0,t_bn) genere la cantidad de puntos de t_bn para la frontera izquierda 
+x_bnL = tf.zeros_like(t_bn, dtype=tf.float64) * 0.0 # en u(0,t_bn) genere la cantidad de puntos de t_bn para la frontera izquierda 
 x_bnR = tf.ones_like(t_bn, dtype=tf.float64) * 1.0#  en u(1,t_bn) genere la cantidad de puntos de t_bn para la frontera derecha             
 u_bn_func  = tf.zeros_like(t_bn, dtype=tf.float64) # u(0,t_bn)=u(1,t_bn)=0 para la función en la frontera, genere al comienzo, es decir en t=0, los puntos generados
 
@@ -202,9 +202,16 @@ u_bn_func  = tf.zeros_like(t_bn, dtype=tf.float64) # u(0,t_bn)=u(1,t_bn)=0 para 
 
 
 
-x_line = tf.linspace(tf.constant(-1.0, tf.float64), tf.constant(1.0, tf.float64), Puntos_ic)
-u0_line = funcion_valor_inicial(tf.reshape(x_line, (-1,1)))
-#distribucion_dominio_y_condicion_inicial_GRAF(x,t,x_in,t_in,u0_func,x_line,u0_line,x_bnL,x_bnR,t_bn,T_final)
+x_line = tf.linspace(tf.constant(0.0, tf.float64), tf.constant(1.0, tf.float64), Puntos_ic)
+"""
+IMPORTANTE, ¿por qué la curva sigue pareciendo una aprabola y no la forma del seno?
+* Resulta que cuando x_line cuando toma los valores entre (0 a 1), solo pinta la parte del seno positivo, osea la concava hacia abajo, y da la casualidad que coincide con la forma de la parabola de 5(1-x²)
+* Si cambias el tf.constant a -1.0, hay si se ve el otro lado del seno. En el problema de explosión se ve una parabola uniforme porque el problema esta definido en (-1,1), pero si cambias a -2 en ese problema, notaras la curva de la parabola hacia abajoooo, y no sinoidal porque pues es una parabola xD
+* En resumidas cuentas, fue mucha concidencia que la gráfica del u_0=sin(πx) en (0,1) para la ecuación del calor sin explosión sea la misma que u_0=5(1-x²) en (-1,1) para el problema de explosión
+* x_line = tf.linspace(tf.constant(-n, tf.float64), tf.constant(n, tf.float64), Puntos_ic) EN LOS (n) modificandolos hay si veras la diferencias en los dos problemas !!!, pero solo usalo de ejemplo para ver la figura completa, ya que los problemas fueron definidos para intervalos espesificos
+"""
+u0_line = funcion_valor_inicial(tf.reshape(x_line, (1000,1)))
+distribucion_dominio_y_condicion_inicial_GRAF(x,t,x_in,t_in,u0_func,x_line,u0_line,x_bnL,x_bnR,t_bn,T_final)
 
 epsilon = 1e-3 #para cuando T_final=t, y no divida por 0, un valor demasiado minusculo para que no altere lo demas
 
@@ -220,7 +227,7 @@ model = PINN([2,30, 30, 30, 30, 1])
 #model = PINN([10, 15, 20, 25,30, 1])
 #model = PINN([100,50,25, 1]) #sin el 25 da más temperatura, pero menos que el modelo anterior, y alborota más la fcn de perdida (3)
 #model = PINN([50,1])
-epochs = 2000
+epochs = 1500
 lr_sched = tf.keras.optimizers.schedules.PiecewiseConstantDecay(
     boundaries=[int(0.33*epochs), int(0.66*epochs)],
     values=[tf.constant(1e-2, tf.float64), tf.constant(1e-3, tf.float64), tf.constant(1e-4, tf.float64)]
