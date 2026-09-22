@@ -20,6 +20,17 @@ import random
 puntero_fcn_activacion = ['relu'] #'tanh'
 from keras.saving import register_keras_serializable
 
+from keras.saving import register_keras_serializable
+condicion = input("Activar muestreo adaptativo (S/n):")
+if condicion=='S':
+    print("\n\nResiduo adaptativo")
+    print("\n")
+    puntero_condicion_adaptattiva = ['S']
+else:
+    print("\n\nResiduo no adaptativo")
+    print("\n")
+    puntero_condicion_adaptattiva = ['n']  
+
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 # Para Python y NumPy
 os.environ['PYTHONHASHSEED'] = '0' 
@@ -76,7 +87,7 @@ class PINN(tf.keras.Model):
 
 #La solución de la Ecuación Diferencial dada por la PINN se denoratara por: ---(u_φ)---
 
-def EDP_loss(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma):
+def EDP_loss(model, x, t,w_ti):
     # tf.GradientTape es una herramienta de TensorFlow para calcular derivadas (gradientes) de operaciones con respecto a sus variables.
     # with asegura que todas las operaciones dentro de él sean "grabadas" por GradientTape, para que luego se puedan calcular sus gradientes.
     # El parámetro persistent=True permite que la cinta (tape) sea reutilizable para calcular múltiples gradientes. 
@@ -86,7 +97,9 @@ def EDP_loss(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma):
     # Esto es necesario cuando variable no es un tensor entrenable (es decir, no es un parámetro de la red neuronal, 
     # como los pesos o biases), pero aún así necesitas calcular derivadas con respecto a esa variable.
 
-    w_ti = 1.0 / tf.pow(T_final - t + epsilon, gamma) #como esto no se esta derivando, no es necesario su verificación
+ 
+    #como esto no se esta derivando, no es necesario su verificación
+    #print(w_ti)
 
     
     with tf.GradientTape(persistent=True) as tape:
@@ -111,18 +124,33 @@ def EDP_loss(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma):
         # Las derivadas deben estar dentro del tape, porque TensorFlow está rastreando si se hace bien.
         # Si están fuera, podrían dar None.
 
-    residuo_edp = du_dt - alpha_pde * d2u_dx2- beta_pde*tf.pow(u_φ,2)   
+    residuo_edp = du_dt-d2u_dx2-tf.pow(u_φ,2)   
     
-    """#RETURN 1 SIN PONDERACIÓN ADAPTATIVA
-    return tf.reduce_mean((residuo_edp)**2) #||∂u/∂t - α * ∂²u/∂x²-  β *u²||²
-    """
-    #RETURN 2 CON PONDERACIÓN ADAPTATIVA
-    return tf.reduce_sum(w_ti * tf.reduce_mean((residuo_edp)**2)) / tf.reduce_sum(w_ti) #-> (Σ w_ti * ||R||²)/ Σw_ti ESTA BIEN,  SI CUMPLE BIEN LA DEFINICIÓN
+
+    if puntero_condicion_adaptattiva[0]=='S':
+        # Sumar y elevar al cuadrado
+        Sum = tf.reduce_sum(w_ti)
+        # Normalizar:
+        Norm_wti = w_ti/Sum
+        # Multiplicar: Norm_wti * tf.pow(residuo_edp,2)
+        pesos = Norm_wti * tf.pow(residuo_edp,2)
+        # el residuo
+        RES = tf.reduce_sum(pesos)/ tf.reduce_sum(Norm_wti)
+     
+        return RES #-> (Σ w_ti * ||R||²)/ Σw_ti ESTA BIEN,  SI CUMPLE BIEN LA DEFINICIÓN
+        #return tf.reduce_sum(w_ti * tf.square(residuo_edp)) / tf.reduce_sum(w_ti) #-> (Σ w_ti * √R)/ Σw_ti ESTA MAL, NO ESTA SACANDO LA NORMA AL CUADRADO
     
-    #return tf.reduce_sum(w_ti * tf.square(residuo_edp)) / tf.reduce_sum(w_ti) #-> (Σ w_ti * √R)/ Σw_ti ESTA MAL, NO ESTA SACANDO LA NORMA AL CUADRADO
-                                                        
+    else:
+        RES = tf.reduce_mean((residuo_edp)**2)
+        #print(RES)
+        return RES #||∂u/∂t -  ∂²u/∂x²-  *u²||²
+    
+
+# tf.reduce_mean((residuo_edp)**2) = tf.square(residuo_edp)
+
 # Otra forma de hacerlo:
 # u = model(tf.stack([x, t], axis=1))  # tf.stack([x, t], axis=1) y tape.watch([x, t])
+
 
 #...........................................................................................................................................................................................................................................................................
  
@@ -159,13 +187,20 @@ def Frontera_loss(model, x_bnL, x_bnR , t_bn, u_bn_func):
 #...........................................................................................................................................................................................................................................................................
 
 def funcion_valor_inicial(x):
-    return 5.0 * (1.0 - tf.square(x))  # MI FUNCIÓN DE PROBLEMA DE VALOR INICIAL
+    return 5.0 * (1.0 - tf.pow(x,2))  # MI FUNCIÓN DE PROBLEMA DE VALOR INICIAL
 
 
 # Coeficiente de difusión del calor (parametro físico)
-alpha_pde = tf.constant(1.0, dtype=tf.float64)                    #ESTO DE ACÁ, LOS ALPHA Y BETHA ESTAN SIENDO MUY IMPORTANTES, MI BETHA PEQUEÑO NO PERMITIA QUE DETECTARA EL  OP NO LINEAL, TODO SE ESTABA AJUSTANDO ERA A LA EDP SIN TENER ENCUENTA EL OP NO LINEAL
-beta_pde = tf.constant(1.0, dtype=tf.float64)                    #POR ESO SIEMPRE SALIA LO MISMO, AUNQUE ESTAMOS AUN EN FASE DE PRUEBAS
-gamma = tf.constant(2.0, dtype=tf.float64)
+
+gamma = 1
+
+if puntero_condicion_adaptattiva[0]=='S':
+    beta = 2
+else:
+    beta = 1 
+
+
+       
  #PINN LEONARDO MIRAR
  
 T_final = 0.3170 # Este es el tiempo estimado de la explosión para u^2 en el experimento númerico
@@ -179,13 +214,17 @@ Puntos_bn = 500
 #Se volvio a usar funciones para tomar el muestreo de puntos porque de una forma necesito variar la cantidad de puntos para los n experimentos
 #Si lo dejo de la otra forma no los podre variar por experimento
 #---------------------------------------------------------------------------------------------------------------------------------------------
-def puntos_muestro_pde(Puntos_dom, T_final):
+def puntos_muestro_pde(Puntos_dom, beta, T_final):
     # Para los datos de la PDE, x ∈ (-1,1) t>0, como de todos modos toca definir un intervalo final en t, 
     # se dejara hasta el tiempo donde se supone que explota
     # Eso segun el experimento númerico
-    x = tf.random.uniform((Puntos_dom,1), minval=-1.0, maxval=1.0, dtype=tf.float64)                    #n=2 entre más alto n, más se acumula en T_final
-    t = T_final*(1-tf.random.uniform((Puntos_dom, 1),minval = 0.0 , maxval = 1.0, dtype=tf.float64)**2) #PESOS PONDERADOS ADAPTATIVAMENTE (2)
-    #t = tf.random.uniform((Puntos_dom, 1), minval=0.0,    maxval=T_final,  dtype=tf.float64)           #t DEFINIDO NORMALMENTE           (1) 
+    # Para los datos de la PDE, x ∈ (-1,1) t>0, como de todos modos toca definir un intervalo final en t, se dejara hasta el tiempo donde se supone que explota
+    # Eso segun el experimento númerico
+    x = tf.random.uniform((Puntos_dom, 1), minval=-1.0, maxval=1.0, dtype=tf.float64)
+    if puntero_condicion_adaptattiva[0]=='S':
+        t = T_final*(1-tf.random.uniform((Puntos_dom, 1),minval = 0.0 , maxval = 1.0, dtype=tf.float64)**beta) #PESOS PONDERADOS ADAPTATIVAMENTE (2)
+    else:
+        t = tf.random.uniform((Puntos_dom, 1), minval=0.0, maxval=T_final,  dtype=tf.float64)           #t DEFINIDO NORMALMENTE           (1)
     return x, t
 
 
@@ -217,7 +256,7 @@ def puntos_muestro_bn(Puntos_bn, T_final):
     return x_bnL, x_bnR, t_bn, u_bn_func
 
 #Necesito aunque sea una vez ver como se esta ejecutando la distribucion de puntos, si estoy en la ponderada al blow up o no
-x, t  = puntos_muestro_pde(Puntos_dom, T_final)
+x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
 x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
 x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
 x_line = tf.linspace(tf.constant(-1.0, tf.float64), tf.constant(1.0, tf.float64), Puntos_ic)
@@ -226,42 +265,57 @@ distribucion_dominio_y_condicion_inicial_GRAF(x,t,x_in,t_in,u0_func,x_line,u0_li
 
 
 epsilon = 1e-3 #para cuando T_final=t, y no divida por 0, un valor demasiado minusculo para que no altere lo demas
+w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
 
 
 
 
 #...........................................................................................................................................................................................................................................................................
 #Entrenamiento ahora es una función porque necesito llamarla varias veces para los n experimentos, si lo dejo estatico como antes, solo correra una PINN
-def Entrenamiento(model, x, t, alpha_pde, beta_pde, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,epochs, best_loss, best_epoch):
-    u_max = None
-    xt = tf.concat([x, t], axis=1)
+def Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs):
 
+    lr_sched = tf.keras.optimizers.schedules.PiecewiseConstantDecay(
+    boundaries=[int(0.33*epochs), int(0.66*epochs)],
+    values=[tf.constant(1e-2, tf.float64), tf.constant(1e-3, tf.float64), tf.constant(1e-4, tf.float64)]) 
+    optimizer = tf.keras.optimizers.Adam(learning_rate=lr_sched) #(4)5e-4
+
+    best_loss = 50.0 #guardamos el función de perdida más baja que dio, para saber cual fue el mejor entrenamiento, comenzamos en un valor muy alto para hacer comparación
+    best_epoch = 0  #guardamos la epoca donde mejor fue entrenado el modelo
+
+
+    
     for epoch in range(1, epochs + 1):
 
         with tf.GradientTape() as tape:
-            loss_1 = EDP_loss(model, x, t, alpha_pde, beta_pde, T_final, epsilon, gamma)
+            loss_1 = EDP_loss(model, x, t,w_ti)
             loss_2 = Valores_Iniciales_loss(model, x_in, t_in, u0_func)
             loss_3 = Frontera_loss(model, x_bnL, x_bnR, t_bn, u_bn_func)
 
-            PINN_loss = w_pde * loss_1 + w_ic * loss_2 + w_bc * loss_3
+            PINN_loss = loss_1 +  loss_2 + loss_3 #LOS PESOSSSSSSSSSSSSSSSSSSSS
 
-        gradients = tape.gradient(PINN_loss, model.trainable_variables)
-        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+            gradients = tape.gradient(PINN_loss, model.trainable_variables)
+            optimizer.apply_gradients(zip(gradients, model.trainable_variables))
 
-        loss = PINN_loss.numpy()
+            loss = PINN_loss.numpy()
 
-        if loss < best_loss:
+        if loss<best_loss:
             best_loss = loss
             best_epoch = epoch
+            xt = tf.concat([x, t], axis=1)
             u_pred = model(xt)
-            intensidad = tf.reduce_max(tf.abs(u_pred)).numpy()
-            u_max = intensidad
+            u_max = tf.reduce_max(tf.abs(u_pred)).numpy()
+           #print("intensidad en la epoca ", epoch," :",u_max)
+            
 
+        
+        #print(f"Epoch {epoch}/{epochs},Loss_PINN: {loss}") #{loss:.5f}        
+
+    print("u_max: ",u_max)
     return best_loss, best_epoch, u_max
 
 #Esta función es la que recibe el arreglo de "resultados" despues de que cada experimento termine, y guarda todos los datos en el formato de una lista
 #Esta es la forma correcta de crear una lista
-def guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,tiempo_de_ejecucion):
+def guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion):
     resultados.append({
         "fase": nombre,
         "fcn_activacion": fcn_activacion,
@@ -275,6 +329,7 @@ def guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_
         "epochs": epochs,
         "best_epoch": best_epoch,
         "best_loss": best_loss,
+        "beta": beta,
         "u_max": u_max,
         "tiempo_ejecución": str(tiempo_de_ejecucion) + " sg"
     })    
@@ -295,14 +350,24 @@ def guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_
 # (5) OJO! Primero defino mi función de activación antes de iniciar cada experimento, porque si lo hago despues, es decir, corro "model" primero y luego cambio el puntero
 # "model" estara corriendo la función de activación anterior, no la que acabe de cambiar
 n=1
-while(n<=3):
-    resultados = []
+if puntero_condicion_adaptattiva[0]=='S':
+    k=20
+else:
     k=16
+
+while(n<=1):
+
+    if puntero_condicion_adaptattiva[0]=='S':
+        beta = 2
+
+    resultados = []
     print ("cantidad de experimentos a realizar",k-1)
+
     if n==1:
         resultados_1 = resultados #como estoy apuntando, lo que yo guarde en resultados ya queda guardado en resultados_1,resultados_2 o resultados_3 dependiendo del cilo, lo anterior no se elimina
         puntero_fcn_activacion[0] = 'tanh'
         print("comienzan los experimentos con tanh")
+    """    
     elif n==2:
         resultados_2 = resultados
         puntero_fcn_activacion[0] = 'relu'
@@ -311,6 +376,8 @@ while(n<=3):
         resultados_3 = resultados
         puntero_fcn_activacion[0] = 'softplus'
         print("comienzan los experimentos con softplus")
+    """    
+
     
 #(a) Para el segundo ciclo defino los pesos de las 3 funciones de perdida "tambien podria experimentar con ellas variandolas, pero no lo vi relevante de momento"
 #(b) definamos "best_loss" para cada experimento, esta en un valor muy grande porque la idea es encontrar uno más pequeño cada vez 
@@ -326,8 +393,7 @@ while(n<=3):
         w_ic = 0.4  # Para obtener Blow Up es muy importante, depende de la condición inicial, más no de la frontera
         w_bc = 0.3
 
-        best_loss = 50000000.0 #guardamos el función de perdida más baja que dio, para saber cual fue el mejor entrenamiento, comenzamos en un valor muy alto para hacer comparación
-        best_epoch = 0  #guardamos la epoca donde mejor fue entrenado el modelo
+
 
 #-----------------------VARIANDO ARQUITECTURA--------------------------------------------------------------
         if i==1:
@@ -336,25 +402,26 @@ while(n<=3):
             model = PINN([2,30, 30, 30, 30, 1])
             modelo = "[2,30, 30, 30, 30, 1]"
 
+
             Puntos_dom = 10000
             Puntos_ic= 1000
             Puntos_bn = 500
             epochs = 1000
-            lr_sched = tf.keras.optimizers.schedules.PiecewiseConstantDecay(boundaries=[int(0.33*epochs), int(0.66*epochs)],values=[tf.constant(1e-2, tf.float64), tf.constant(1e-3, tf.float64), tf.constant(1e-4, tf.float64)])
-            optimizer = tf.keras.optimizers.Adam(learning_rate=lr_sched) #(4)5e-4
-            x, t  = puntos_muestro_pde(Puntos_dom, T_final)
+
+            x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
             x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
             x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
+            w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
 
             print("experimento numero ",i," en ejecución")
             ini = time.perf_counter()
-            best_loss, best_epoch, u_max= Entrenamiento(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma,x_in, t_in, u0_func,x_bnL, x_bnR , t_bn, u_bn_func,w_pde,w_ic,w_bc,epochs,best_loss,best_epoch)
+            best_loss, best_epoch, u_max = Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs)
             end = time.perf_counter()
             print("finalizado\n")
             
             tiempo_de_ejecucion = end-ini
 
-            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,tiempo_de_ejecucion)
+            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion)
 
         elif i==2:
             nombre = "experimento " + str(i)
@@ -366,21 +433,21 @@ while(n<=3):
             Puntos_ic= 1000
             Puntos_bn = 500
             epochs = 1000
-            lr_sched = tf.keras.optimizers.schedules.PiecewiseConstantDecay(boundaries=[int(0.33*epochs), int(0.66*epochs)],values=[tf.constant(1e-2, tf.float64), tf.constant(1e-3, tf.float64), tf.constant(1e-4, tf.float64)])
-            optimizer = tf.keras.optimizers.Adam(learning_rate=lr_sched) #(4)5e-4
-            x, t  = puntos_muestro_pde(Puntos_dom, T_final)
+
+            x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
             x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
             x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
+            w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
 
             print("experimento numero ",i," en ejecución")
             ini = time.perf_counter()
-            best_loss, best_epoch, u_max= Entrenamiento(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma,x_in, t_in, u0_func,x_bnL, x_bnR , t_bn, u_bn_func,w_pde,w_ic,w_bc,epochs,best_loss,best_epoch)
+            best_loss, best_epoch, u_max = Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs)
             end = time.perf_counter()
             print("finalizado\n")
             
             tiempo_de_ejecucion = end-ini
 
-            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,tiempo_de_ejecucion)
+            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion)
 
         elif i==3:
             nombre = "experimento " + str(i)
@@ -392,21 +459,22 @@ while(n<=3):
             Puntos_ic= 1000
             Puntos_bn = 500
             epochs = 1000
-            lr_sched = tf.keras.optimizers.schedules.PiecewiseConstantDecay(boundaries=[int(0.33*epochs), int(0.66*epochs)],values=[tf.constant(1e-2, tf.float64), tf.constant(1e-3, tf.float64), tf.constant(1e-4, tf.float64)])
-            optimizer = tf.keras.optimizers.Adam(learning_rate=lr_sched) #(4)5e-4
-            x, t  = puntos_muestro_pde(Puntos_dom, T_final)
+
+            x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
             x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
             x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
+            w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
+
 
             print("experimento numero ",i," en ejecución")
             ini = time.perf_counter()
-            best_loss, best_epoch, u_max= Entrenamiento(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma,x_in, t_in, u0_func,x_bnL, x_bnR , t_bn, u_bn_func,w_pde,w_ic,w_bc,epochs,best_loss,best_epoch)
+            best_loss, best_epoch, u_max = Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs)
             end = time.perf_counter()
             print("finalizado\n")
             
             tiempo_de_ejecucion = end-ini
 
-            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,tiempo_de_ejecucion)
+            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion)
 
         elif i==4:
             nombre = "experimento " + str(i)
@@ -418,21 +486,22 @@ while(n<=3):
             Puntos_ic= 1000
             Puntos_bn = 500
             epochs = 1000
-            lr_sched = tf.keras.optimizers.schedules.PiecewiseConstantDecay(boundaries=[int(0.33*epochs), int(0.66*epochs)],values=[tf.constant(1e-2, tf.float64), tf.constant(1e-3, tf.float64), tf.constant(1e-4, tf.float64)])
-            optimizer = tf.keras.optimizers.Adam(learning_rate=lr_sched) #(4)5e-4
-            x, t  = puntos_muestro_pde(Puntos_dom, T_final)
+
+            x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
             x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
             x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
+            w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
+
 
             print("experimento numero ",i," en ejecución")
             ini = time.perf_counter()
-            best_loss, best_epoch, u_max= Entrenamiento(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma,x_in, t_in, u0_func,x_bnL, x_bnR , t_bn, u_bn_func,w_pde,w_ic,w_bc,epochs,best_loss,best_epoch)
+            best_loss, best_epoch, u_max = Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs)
             end = time.perf_counter()
             print("finalizado\n")
             
             tiempo_de_ejecucion = end-ini
 
-            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,tiempo_de_ejecucion)
+            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion)
 
         elif i==5:
             nombre = "experimento " + str(i)
@@ -444,21 +513,22 @@ while(n<=3):
             Puntos_ic= 1000
             Puntos_bn = 500
             epochs = 1000
-            lr_sched = tf.keras.optimizers.schedules.PiecewiseConstantDecay(boundaries=[int(0.33*epochs), int(0.66*epochs)],values=[tf.constant(1e-2, tf.float64), tf.constant(1e-3, tf.float64), tf.constant(1e-4, tf.float64)])
-            optimizer = tf.keras.optimizers.Adam(learning_rate=lr_sched) #(4)5e-4
-            x, t  = puntos_muestro_pde(Puntos_dom, T_final)
+
+            x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
             x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
             x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
+            w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
+
 
             print("experimento numero ",i," en ejecución")
             ini = time.perf_counter()
-            best_loss, best_epoch, u_max= Entrenamiento(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma,x_in, t_in, u0_func,x_bnL, x_bnR , t_bn, u_bn_func,w_pde,w_ic,w_bc,epochs,best_loss,best_epoch)
+            best_loss, best_epoch, u_max = Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs)
             end = time.perf_counter()
             print("finalizado\n")
             
             tiempo_de_ejecucion = end-ini
 
-            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,tiempo_de_ejecucion)
+            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion)
 
 #-----------------------AUMENTANDO PUNTOS--------------------------------------------------------------
 
@@ -472,21 +542,23 @@ while(n<=3):
             Puntos_ic= 1200
             Puntos_bn = 520
             epochs = 1000
-            lr_sched = tf.keras.optimizers.schedules.PiecewiseConstantDecay(boundaries=[int(0.33*epochs), int(0.66*epochs)],values=[tf.constant(1e-2, tf.float64), tf.constant(1e-3, tf.float64), tf.constant(1e-4, tf.float64)])
-            optimizer = tf.keras.optimizers.Adam(learning_rate=lr_sched) #(4)5e-4
-            x, t  = puntos_muestro_pde(Puntos_dom, T_final)
+
+            x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
             x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
             x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
+            epsilon = 1e-3 #para cuando T_final=t, y no divida por 0, un valor demasiado minusculo para que no altere lo demas
+            w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
+
 
             print("experimento numero ",i," en ejecución")
             ini = time.perf_counter()
-            best_loss, best_epoch, u_max= Entrenamiento(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma,x_in, t_in, u0_func,x_bnL, x_bnR , t_bn, u_bn_func,w_pde,w_ic,w_bc,epochs,best_loss,best_epoch)
+            best_loss, best_epoch, u_max= Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs)
             end = time.perf_counter()
             print("finalizado\n")
             
             tiempo_de_ejecucion = end-ini
 
-            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,tiempo_de_ejecucion)
+            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion)
                                 
         elif i==7:
             nombre = "experimento " + str(i)
@@ -498,21 +570,21 @@ while(n<=3):
             Puntos_ic= 1400
             Puntos_bn = 540
             epochs = 1000
-            lr_sched = tf.keras.optimizers.schedules.PiecewiseConstantDecay(boundaries=[int(0.33*epochs), int(0.66*epochs)],values=[tf.constant(1e-2, tf.float64), tf.constant(1e-3, tf.float64), tf.constant(1e-4, tf.float64)])
-            optimizer = tf.keras.optimizers.Adam(learning_rate=lr_sched) #(4)5e-4
-            x, t  = puntos_muestro_pde(Puntos_dom, T_final)
+
+            x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
             x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
             x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
+            w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
 
             print("experimento numero ",i," en ejecución")
             ini = time.perf_counter()
-            best_loss, best_epoch, u_max= Entrenamiento(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma,x_in, t_in, u0_func,x_bnL, x_bnR , t_bn, u_bn_func,w_pde,w_ic,w_bc,epochs,best_loss,best_epoch)
+            best_loss, best_epoch, u_max = Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs)
             end = time.perf_counter()
             print("finalizado\n")
             
             tiempo_de_ejecucion = end-ini
 
-            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,tiempo_de_ejecucion)
+            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion)
     
         elif i==8:
             nombre = "experimento " + str(i)
@@ -524,21 +596,21 @@ while(n<=3):
             Puntos_ic= 1600
             Puntos_bn = 560
             epochs = 1000
-            lr_sched = tf.keras.optimizers.schedules.PiecewiseConstantDecay(boundaries=[int(0.33*epochs), int(0.66*epochs)],values=[tf.constant(1e-2, tf.float64), tf.constant(1e-3, tf.float64), tf.constant(1e-4, tf.float64)])
-            optimizer = tf.keras.optimizers.Adam(learning_rate=lr_sched) #(4)5e-4
-            x, t  = puntos_muestro_pde(Puntos_dom, T_final)
+
+            x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
             x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
             x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
+            w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
 
             print("experimento numero ",i," en ejecución")
             ini = time.perf_counter()
-            best_loss, best_epoch, u_max= Entrenamiento(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma,x_in, t_in, u0_func,x_bnL, x_bnR , t_bn, u_bn_func,w_pde,w_ic,w_bc,epochs,best_loss,best_epoch)
+            best_loss, best_epoch, u_max = Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs)
             end = time.perf_counter()
             print("finalizado\n")
             
             tiempo_de_ejecucion = end-ini
 
-            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,tiempo_de_ejecucion)
+            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion)
 
         elif i==9:
             nombre = "experimento " + str(i)
@@ -550,21 +622,21 @@ while(n<=3):
             Puntos_ic= 1800
             Puntos_bn = 580
             epochs = 1000
-            lr_sched = tf.keras.optimizers.schedules.PiecewiseConstantDecay(boundaries=[int(0.33*epochs), int(0.66*epochs)],values=[tf.constant(1e-2, tf.float64), tf.constant(1e-3, tf.float64), tf.constant(1e-4, tf.float64)])
-            optimizer = tf.keras.optimizers.Adam(learning_rate=lr_sched) #(4)5e-4
-            x, t  = puntos_muestro_pde(Puntos_dom, T_final)
+
+            x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
             x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
             x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
+            w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
 
             print("experimento numero ",i," en ejecución")
             ini = time.perf_counter()
-            best_loss, best_epoch, u_max= Entrenamiento(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma,x_in, t_in, u0_func,x_bnL, x_bnR , t_bn, u_bn_func,w_pde,w_ic,w_bc,epochs,best_loss,best_epoch)
+            best_loss, best_epoch, u_max = Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs)
             end = time.perf_counter()
             print("finalizado\n")
             
             tiempo_de_ejecucion = end-ini
 
-            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,tiempo_de_ejecucion)
+            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion)
 
         elif i==10:
             nombre = "experimento " + str(i)
@@ -576,21 +648,21 @@ while(n<=3):
             Puntos_ic= 2000
             Puntos_bn = 600
             epochs = 1000
-            lr_sched = tf.keras.optimizers.schedules.PiecewiseConstantDecay(boundaries=[int(0.33*epochs), int(0.66*epochs)],values=[tf.constant(1e-2, tf.float64), tf.constant(1e-3, tf.float64), tf.constant(1e-4, tf.float64)])
-            optimizer = tf.keras.optimizers.Adam(learning_rate=lr_sched) #(4)5e-4
-            x, t  = puntos_muestro_pde(Puntos_dom, T_final)
+
+            x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
             x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
             x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
+            w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
 
             print("experimento numero ",i," en ejecución")
             ini = time.perf_counter()
-            best_loss, best_epoch, u_max= Entrenamiento(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma,x_in, t_in, u0_func,x_bnL, x_bnR , t_bn, u_bn_func,w_pde,w_ic,w_bc,epochs,best_loss,best_epoch)
+            best_loss, best_epoch, u_max = Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs)
             end = time.perf_counter()
             print("finalizado\n")
             
             tiempo_de_ejecucion = end-ini
 
-            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,tiempo_de_ejecucion)
+            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion)
 
 #-----------------------AUMENTANDO PUNTOS--------------------------------------------------------------
         elif i==11:
@@ -603,21 +675,21 @@ while(n<=3):
             Puntos_ic= 2000
             Puntos_bn = 600
             epochs = 2000
-            lr_sched = tf.keras.optimizers.schedules.PiecewiseConstantDecay(boundaries=[int(0.33*epochs), int(0.66*epochs)],values=[tf.constant(1e-2, tf.float64), tf.constant(1e-3, tf.float64), tf.constant(1e-4, tf.float64)])
-            optimizer = tf.keras.optimizers.Adam(learning_rate=lr_sched) #(4)5e-4
-            x, t  = puntos_muestro_pde(Puntos_dom, T_final)
+
+            x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
             x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
             x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
+            w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
 
             print("experimento numero ",i," en ejecución")
             ini = time.perf_counter()
-            best_loss, best_epoch, u_max= Entrenamiento(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma,x_in, t_in, u0_func,x_bnL, x_bnR , t_bn, u_bn_func,w_pde,w_ic,w_bc,epochs,best_loss,best_epoch)
+            best_loss, best_epoch, u_max = Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs)
             end = time.perf_counter()
             print("finalizado\n")
             
             tiempo_de_ejecucion = end-ini
 
-            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,tiempo_de_ejecucion)
+            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion)
 
         elif i==12:
             nombre = "experimento " + str(i)
@@ -629,21 +701,21 @@ while(n<=3):
             Puntos_ic= 2000
             Puntos_bn = 600
             epochs = 3000
-            lr_sched = tf.keras.optimizers.schedules.PiecewiseConstantDecay(boundaries=[int(0.33*epochs), int(0.66*epochs)],values=[tf.constant(1e-2, tf.float64), tf.constant(1e-3, tf.float64), tf.constant(1e-4, tf.float64)])
-            optimizer = tf.keras.optimizers.Adam(learning_rate=lr_sched) #(4)5e-4
-            x, t  = puntos_muestro_pde(Puntos_dom, T_final)
+
+            x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
             x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
             x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
+            w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
 
             print("experimento numero ",i," en ejecución")
             ini = time.perf_counter()
-            best_loss, best_epoch, u_max= Entrenamiento(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma,x_in, t_in, u0_func,x_bnL, x_bnR , t_bn, u_bn_func,w_pde,w_ic,w_bc,epochs,best_loss,best_epoch)
+            best_loss, best_epoch, u_max = Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs)
             end = time.perf_counter()
             print("finalizado\n")
             
             tiempo_de_ejecucion = end-ini
 
-            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,tiempo_de_ejecucion)
+            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion)
 
         elif i==13:
             nombre = "experimento " + str(i)
@@ -655,21 +727,21 @@ while(n<=3):
             Puntos_ic= 2000
             Puntos_bn = 600
             epochs = 4000
-            lr_sched = tf.keras.optimizers.schedules.PiecewiseConstantDecay(boundaries=[int(0.33*epochs), int(0.66*epochs)],values=[tf.constant(1e-2, tf.float64), tf.constant(1e-3, tf.float64), tf.constant(1e-4, tf.float64)])
-            optimizer = tf.keras.optimizers.Adam(learning_rate=lr_sched) #(4)5e-4
-            x, t  = puntos_muestro_pde(Puntos_dom, T_final)
+
+            x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
             x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
             x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
+            w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
 
             print("experimento numero ",i," en ejecución")
             ini = time.perf_counter()
-            best_loss, best_epoch, u_max= Entrenamiento(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma,x_in, t_in, u0_func,x_bnL, x_bnR , t_bn, u_bn_func,w_pde,w_ic,w_bc,epochs,best_loss,best_epoch)
+            best_loss, best_epoch, u_max = Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs)
             end = time.perf_counter()
             print("finalizado\n")
             
             tiempo_de_ejecucion = end-ini
 
-            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,tiempo_de_ejecucion)
+            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion)
 
         elif i==14:
             nombre = "experimento " + str(i)
@@ -681,21 +753,21 @@ while(n<=3):
             Puntos_ic= 2000
             Puntos_bn = 600
             epochs = 5000
-            lr_sched = tf.keras.optimizers.schedules.PiecewiseConstantDecay(boundaries=[int(0.33*epochs), int(0.66*epochs)],values=[tf.constant(1e-2, tf.float64), tf.constant(1e-3, tf.float64), tf.constant(1e-4, tf.float64)])
-            optimizer = tf.keras.optimizers.Adam(learning_rate=lr_sched) #(4)5e-4
-            x, t  = puntos_muestro_pde(Puntos_dom, T_final)
+
+            x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
             x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
             x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
+            w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
 
             print("experimento numero ",i," en ejecución")
             ini = time.perf_counter()
-            best_loss, best_epoch, u_max= Entrenamiento(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma,x_in, t_in, u0_func,x_bnL, x_bnR , t_bn, u_bn_func,w_pde,w_ic,w_bc,epochs,best_loss,best_epoch)
+            best_loss, best_epoch, u_max = Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs)
             end = time.perf_counter()
             print("finalizado\n")
             
             tiempo_de_ejecucion = end-ini
 
-            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,tiempo_de_ejecucion)
+            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion)
 
         elif i==15:
             nombre = "experimento " + str(i)
@@ -707,38 +779,160 @@ while(n<=3):
             Puntos_ic= 2000
             Puntos_bn = 600
             epochs = 6000
-            lr_sched = tf.keras.optimizers.schedules.PiecewiseConstantDecay(boundaries=[int(0.33*epochs), int(0.66*epochs)],values=[tf.constant(1e-2, tf.float64), tf.constant(1e-3, tf.float64), tf.constant(1e-4, tf.float64)])
-            optimizer = tf.keras.optimizers.Adam(learning_rate=lr_sched) #(4)5e-4
-            x, t  = puntos_muestro_pde(Puntos_dom, T_final)
+
+            x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
             x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
             x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
+            w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
 
             print("experimento número ",i," en ejecución")
             ini = time.perf_counter()
-            best_loss, best_epoch, u_max= Entrenamiento(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma,x_in, t_in, u0_func,x_bnL, x_bnR , t_bn, u_bn_func,w_pde,w_ic,w_bc,epochs,best_loss,best_epoch)
+            best_loss, best_epoch, u_max = Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs)
             end = time.perf_counter()
             print("finalizado\n")
             
             tiempo_de_ejecucion = end-ini
 
-            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,tiempo_de_ejecucion)  
+            guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion)  
+    
+        if puntero_condicion_adaptattiva[0]=='S':
+
+            if i==16:
+                nombre = "experimento " + str(i)
+                fcn_activacion = puntero_fcn_activacion[0]
+                model = PINN([2,70, 70, 70, 70, 1])
+                modelo = "[2,70, 70, 70, 70, 1]"
+
+                Puntos_dom = 20000
+                Puntos_ic= 2000
+                Puntos_bn = 600
+                epochs = 6000
+
+                beta = 4
+                x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
+                x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
+                x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
+                w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
+
+                print("experimento número ",i," en ejecución")
+                ini = time.perf_counter()
+                best_loss, best_epoch, u_max = Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs)
+                end = time.perf_counter()
+                print("finalizado\n")
+            
+                tiempo_de_ejecucion = end-ini
+
+                guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion)  
+
+            elif i==17:
+                nombre = "experimento " + str(i)
+                fcn_activacion = puntero_fcn_activacion[0]
+                model = PINN([2,70, 70, 70, 70, 1])
+                modelo = "[2,70, 70, 70, 70, 1]"
+
+                Puntos_dom = 20000
+                Puntos_ic= 2000
+                Puntos_bn = 600
+                epochs = 6000
+
+                beta = 6
+                x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
+                x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
+                x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
+                w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
+
+                print("experimento número ",i," en ejecución")
+                ini = time.perf_counter()
+                best_loss, best_epoch, u_max = Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs)
+                end = time.perf_counter()
+                print("finalizado\n")
+            
+                tiempo_de_ejecucion = end-ini
+
+                guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion)  
+    
+            elif i==18:
+                nombre = "experimento " + str(i)
+                fcn_activacion = puntero_fcn_activacion[0]
+                model = PINN([2,70, 70, 70, 70, 1])
+                modelo = "[2,70, 70, 70, 70, 1]"
+
+                Puntos_dom = 20000
+                Puntos_ic= 2000
+                Puntos_bn = 600
+                epochs = 6000
+
+                beta = 8
+                x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
+                x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
+                x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
+                w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
+
+                print("experimento número ",i," en ejecución")
+                ini = time.perf_counter()
+                best_loss, best_epoch, u_max = Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs)
+                end = time.perf_counter()
+                print("finalizado\n")
+            
+                tiempo_de_ejecucion = end-ini
+
+                guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion)  
+    
+            elif i==19:
+                nombre = "experimento " + str(i)
+                fcn_activacion = puntero_fcn_activacion[0]
+                model = PINN([2,70, 70, 70, 70, 1])
+                modelo = "[2,70, 70, 70, 70, 1]"
+
+                Puntos_dom = 20000
+                Puntos_ic= 2000
+                Puntos_bn = 600
+                epochs = 6000
+
+                beta = 10
+                x, t  = puntos_muestro_pde(Puntos_dom, beta, T_final)
+                x_in,  t_in, u0_func  = puntos_muestro_ic(Puntos_ic)
+                x_bnL, x_bnR, t_bn, u_bn_func= puntos_muestro_bn(Puntos_bn, T_final)
+                w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
+
+                print("experimento número ",i," en ejecución")
+                ini = time.perf_counter()
+                best_loss, best_epoch, u_max = Entrenamiento(model, x, t, T_final, epsilon, gamma,x_in, t_in, u0_func,x_bnL, x_bnR, t_bn, u_bn_func,w_pde, w_ic, w_bc,w_ti,epochs)
+                end = time.perf_counter()
+                print("finalizado\n")
+            
+                tiempo_de_ejecucion = end-ini
+
+                guardar_resultado(resultados,nombre,fcn_activacion,modelo,Puntos_dom,Puntos_ic,Puntos_bn,w_pde,w_ic,w_bc,epochs,best_epoch,best_loss,u_max,beta,tiempo_de_ejecucion)  
+    
+
+
     #aumente en 1 para pasar a guardar la siguiente tabla, y asi hasta salir del ciclo, el while se rompe en n>3
     n = n + 1
 
 #convierta esos resultados de los 15 esperimentos para tahn, relu y softplus y dataframes de pandas
 DataFrame_PINN_tanh = pd.DataFrame(resultados_1)
-DataFrame_PINN_relu = pd.DataFrame(resultados_2)
-DataFrame_PINN_softplus = pd.DataFrame(resultados_3)
+#DataFrame_PINN_relu = pd.DataFrame(resultados_2)
+#DataFrame_PINN_softplus = pd.DataFrame(resultados_3)
 #guardelos uno por uno
-DataFrame_PINN_tanh.to_csv("experimentos_A_pinn1.csv", index=False)
-DataFrame_PINN_relu.to_csv("experimentos_A_pinn2.csv", index=False)
-DataFrame_PINN_softplus.to_csv("experimentos_A_pinn3.csv", index=False)
+
+if puntero_condicion_adaptattiva[0]=='S':
+
+    DataFrame_PINN_tanh.to_csv("experimentos_A_pinn1.csv", index=False)
+    #DataFrame_PINN_relu.to_csv("experimentos_A_pinn2.csv", index=False)
+    #DataFrame_PINN_softplus.to_csv("experimentos_A_pinn3.csv", index=False)
+
+else:
+    DataFrame_PINN_tanh.to_csv("experimentos_N_pinn1.csv", index=False)
+    #DataFrame_PINN_relu.to_csv("experimentos_N_pinn2.csv", index=False)
+    #DataFrame_PINN_softplus.to_csv("experimentos_N_pinn3.csv", index=False)
+
 #imprimalos para ver como quedan
 print(DataFrame_PINN_tanh)
 print("\n\n")
-print(DataFrame_PINN_relu)
-print("\n\n")
-print(DataFrame_PINN_softplus)
+#print(DataFrame_PINN_relu)
+#print("\n\n")
+#print(DataFrame_PINN_softplus)
 
 
 
@@ -795,10 +989,15 @@ def df_a_png(DataFrame_PINN, nombre_archivo="tabla.png", titulo="DataFrame", anc
 
 #y genere las imagenes por cada dataframe, en este caso guarde 3 por las funciones de activación tanh, relu y softplus
 #FIN DE ESTE CÓDIGO (SUGERENCIA: PODRIA DOCUMENTARLO AL ESTILO DE LEONARDO VALENCIA CON END_WHILE)
-df_a_png(DataFrame_PINN_tanh , "Tabla_PINN_A_1.png", "Tabla de resultados para la PINN con explosión en tiempo finito con muestreo adaptativo ; T=0.3170")
-df_a_png(DataFrame_PINN_relu , "Tabla_PINN_A_2.png", "Tabla de resultados para la PINN con explosión en tiempo finito con muestreo adaptativo ; T=0.3170")
-df_a_png(DataFrame_PINN_softplus , "Tabla_PINN_A_3.png", "Tabla de resultados para la PINN con explosión en tiempo finito con muestreo adaptativo ; T=0.3170")
+if puntero_condicion_adaptattiva[0]=='S':
+    df_a_png(DataFrame_PINN_tanh , "Tabla_PINN_A_1.png", "Tabla de resultados para la PINN con explosión en tiempo finito con muestreo adaptativo ; T=0.3170")
+    #df_a_png(DataFrame_PINN_relu , "Tabla_PINN_A_2.png", "Tabla de resultados para la PINN con explosión en tiempo finito con muestreo adaptativo ; T=0.3170")
+    #df_a_png(DataFrame_PINN_softplus , "Tabla_PINN_A_3.png", "Tabla de resultados para la PINN con explosión en tiempo finito con muestreo adaptativo ; T=0.3170")
 
+else:
+    df_a_png(DataFrame_PINN_tanh , "Tabla_PINN_N_1.png", "Tabla de resultados para la PINN con explosión en tiempo finito sin muestreo adaptativo ; T=0.3170")
+    #df_a_png(DataFrame_PINN_relu , "Tabla_PINN_N_2.png", "Tabla de resultados para la PINN con explosión en tiempo finito sin muestreo adaptativo ; T=0.3170")
+    #df_a_png(DataFrame_PINN_softplus , "Tabla_PINN_N_3.png", "Tabla de resultados para la PINN con explosión en tiempo finito sin muestreo adaptativo ; T=0.3170")
 #NOTAS
 
 """
