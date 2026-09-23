@@ -118,7 +118,7 @@ def mapa_de_calor_y_grafico_3D_para_la_PINN_GRAF(u_φ,X_np,T_np):
 def mapa_de_calor_para_Diferencias_finitas_GRAF(u_ψ,Nt,dt):
 	plt.subplot(1, 1, 1)
 	plt.title("Mapa de calor solución diferencias finitas: $u_t = u_{xx} - u^{2}$")
-	plt.imshow(u_ψ,origin='lower', aspect='auto', cmap='jet', extent=[-1, 1, 0, Nt*dt])
+	plt.imshow(u_ψ,origin='lower', aspect='auto', cmap='jet', extent=[-1, 1, 0, dt*Nt])
 	plt.colorbar(label='u(x,t)')
 	plt.xlabel('x')
 	plt.ylabel('t')

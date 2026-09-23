@@ -11,8 +11,22 @@ import random
 #Toda operación que lleve el tf, esta ejecutanode en GPU (porque ya CUDA se enlazo con mi grafica NVIDIA y da true)
 #Toda operación con np, esta en CPU
 
- 
+def atanh(x):
+    # Forzamos a que los valores estén en el dominio válido (-1, 1)
+    # para evitar errores numéricos (NaN) durante el entrenamiento.
+    x_clipped = tf.clip_by_value(x, -0.9999, 0.9999)
+    return tf.math.atanh(x_clipped)
+
 from keras.saving import register_keras_serializable
+condicion = input("Activar muestreo adaptativo (S/n):")
+if condicion=='S':
+    print("\n\nResiduo adaptativo")
+    print("\n")
+    puntero_condicion_adaptattiva = ['S']
+else:
+    print("\n\nResiduo no adaptativo")
+    print("\n")
+    puntero_condicion_adaptattiva = ['n']   
 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 # Para Python y NumPy
@@ -28,6 +42,8 @@ tf.keras.backend.set_floatx('float64')
 
 @register_keras_serializable()  # ¡Esta línea es crucial! 
 #primer paso, se define como creo mi PINNN, cuantas capaz y neuronas
+
+ 
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 class PINN(tf.keras.Model):  
     def __init__(self, layers):
@@ -70,7 +86,7 @@ class PINN(tf.keras.Model):
 
 #La solución de la Ecuación Diferencial dada por la PINN se denoratara por: ---(u_φ)---
 
-def EDP_loss(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma):
+def EDP_loss(model, x, t,w_ti):
     # tf.GradientTape es una herramienta de TensorFlow para calcular derivadas (gradientes) de operaciones con respecto a sus variables.
     # with asegura que todas las operaciones dentro de él sean "grabadas" por GradientTape, para que luego se puedan calcular sus gradientes.
     # El parámetro persistent=True permite que la cinta (tape) sea reutilizable para calcular múltiples gradientes. 
@@ -80,7 +96,9 @@ def EDP_loss(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma):
     # Esto es necesario cuando variable no es un tensor entrenable (es decir, no es un parámetro de la red neuronal, 
     # como los pesos o biases), pero aún así necesitas calcular derivadas con respecto a esa variable.
 
-    w_ti = 1.0 / tf.pow(T_final - t + epsilon, gamma) #como esto no se esta derivando, no es necesario su verificación
+ 
+     #como esto no se esta derivando, no es necesario su verificación
+    #print(w_ti)
 
     
     with tf.GradientTape(persistent=True) as tape:
@@ -105,15 +123,30 @@ def EDP_loss(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma):
         # Las derivadas deben estar dentro del tape, porque TensorFlow está rastreando si se hace bien.
         # Si están fuera, podrían dar None.
 
-    residuo_edp = du_dt - alpha_pde * d2u_dx2- beta_pde*tf.pow(u_φ,2)   
+    residuo_edp = du_dt-d2u_dx2-tf.pow(u_φ,2)   
     
-    """#RETURN 1 SIN PONDERACIÓN ADAPTATIVA
-    return tf.reduce_mean((residuo_edp)**2) #||∂u/∂t - α * ∂²u/∂x²-  β *u²||²
-    """
-    #RETURN 2 CON PONDERACIÓN ADAPTATIVA
-    return tf.reduce_sum(w_ti * tf.reduce_mean((residuo_edp)**2)) / tf.reduce_sum(w_ti) #-> (Σ w_ti * ||R||²)/ Σw_ti ESTA BIEN,  SI CUMPLE BIEN LA DEFINICIÓN
-    #return tf.reduce_sum(w_ti * tf.square(residuo_edp)) / tf.reduce_sum(w_ti) #-> (Σ w_ti * √R)/ Σw_ti ESTA MAL, NO ESTA SACANDO LA NORMA AL CUADRADO
+
+    if puntero_condicion_adaptattiva[0]=='S':
+        # Sumar y elevar al cuadrado
+
+        Sum = tf.reduce_sum(w_ti)
+        # Normalizar:
+        Norm_wti = w_ti/Sum
+        # Multiplicar: Norm_wti * tf.pow(residuo_edp,2)
+        pesos = Norm_wti * tf.pow(residuo_edp,2)
+        # el residuo
+        RES = tf.reduce_sum(pesos)/ tf.reduce_sum(Norm_wti)
+        #RETURN 2 CON PONDERACIÓN ADAPTATIVA
+
+
+        return RES #-> (Σ w_ti * ||R||²)/ Σw_ti ESTA BIEN,  SI CUMPLE BIEN LA DEFINICIÓN
+        #return tf.reduce_sum(w_ti * tf.square(residuo_edp)) / tf.reduce_sum(w_ti) #-> (Σ w_ti * √R)/ Σw_ti ESTA MAL, NO ESTA SACANDO LA NORMA AL CUADRADO
     
+    else:
+        RES = tf.reduce_mean((residuo_edp)**2)
+        return RES #||∂u/∂t -  ∂²u/∂x²-  *u²||²
+    
+
 # tf.reduce_mean((residuo_edp)**2) = tf.square(residuo_edp)
 
 # Otra forma de hacerlo:
@@ -154,13 +187,12 @@ def Frontera_loss(model, x_bnL, x_bnR , t_bn, u_bn_func):
 #...........................................................................................................................................................................................................................................................................
 
 def funcion_valor_inicial(x):
-    return 5.0 * (1.0 - tf.square(x))  # MI FUNCIÓN DE PROBLEMA DE VALOR INICIAL
+    return 5.0 * (1.0 - tf.pow(x,2))  # MI FUNCIÓN DE PROBLEMA DE VALOR INICIAL
 
 
 # Coeficiente de difusión del calor (parametro físico)
-alpha_pde = tf.constant(1.0, dtype=tf.float64)                    #ESTO DE ACÁ, LOS ALPHA Y BETHA ESTAN SIENDO MUY IMPORTANTES, MI BETHA PEQUEÑO NO PERMITIA QUE DETECTARA EL  OP NO LINEAL, TODO SE ESTABA AJUSTANDO ERA A LA EDP SIN TENER ENCUENTA EL OP NO LINEAL
-beta_pde = tf.constant(1.0, dtype=tf.float64)                    #POR ESO SIEMPRE SALIA LO MISMO, AUNQUE ESTAMOS AUN EN FASE DE PRUEBAS
-gamma = tf.constant(2.0, dtype=tf.float64)
+gamma = 1
+beta = 2
  #PINN LEONARDO MIRAR
  
 T_final = 0.3170 # Este es el tiempo estimado de la explosión para u^2 en el experimento númerico
@@ -173,8 +205,12 @@ Puntos_bn = 500
 # Para los datos de la PDE, x ∈ (-1,1) t>0, como de todos modos toca definir un intervalo final en t, se dejara hasta el tiempo donde se supone que explota
 # Eso segun el experimento númerico
 x = tf.random.uniform((Puntos_dom, 1), minval=-1.0, maxval=1.0, dtype=tf.float64)
-t = T_final*(1-tf.random.uniform((Puntos_dom, 1),minval = 0.0 , maxval = 1.0, dtype=tf.float64)**2) #PESOS PONDERADOS ADAPTATIVAMENTE (2)
-#t = tf.random.uniform((Puntos_dom, 1), minval=0.0,    maxval=T_final,  dtype=tf.float64)           #t DEFINIDO NORMALMENTE           (1)
+if puntero_condicion_adaptattiva[0]=='S':
+    t = T_final*(1-tf.random.uniform((Puntos_dom, 1),minval = 0.0 , maxval = 1.0, dtype=tf.float64)**beta) #PESOS PONDERADOS ADAPTATIVAMENTE (2)
+else:
+    t = tf.random.uniform((Puntos_dom, 1), minval=0.0,    maxval=T_final,  dtype=tf.float64)           #t DEFINIDO NORMALMENTE           (1)
+
+  
  
 # Para los datos en la condición inicial, x_in esta igual de definido que en x, es decir x_in ∈ (-1,1)
 # para t_in todos los puntos generados son cero, puesto que comienzo en u(x,0), es por eso t=0
@@ -202,7 +238,7 @@ distribucion_dominio_y_condicion_inicial_GRAF(x,t,x_in,t_in,u0_func,x_line,u0_li
 
 epsilon = 1e-3 #para cuando T_final=t, y no divida por 0, un valor demasiado minusculo para que no altere lo demas
 
-
+w_ti = 1.0 / (T_final - t+ epsilon)**gamma 
 
 
 #...........................................................................................................................................................................................................................................................................
@@ -211,6 +247,11 @@ epsilon = 1e-3 #para cuando T_final=t, y no divida por 0, un valor demasiado min
 #model = PINN([20, 20, 20, 1])#la ultima capa siemrpe debe ser una neurona!! (1)
 #model = PINN([50,25, 1]) #mejor explosión (2)
 model = PINN([2,30, 30, 30, 30, 1])
+"""
+_ = model(tf.zeros((1,2), dtype=tf.float64)) Esto era para evr como se inicia la red
+
+print(model.trainable_variables[0].numpy())
+"""
 #model = PINN([10, 15, 20, 25,30, 1])
 #model = PINN([100,50,25, 1]) #sin el 25 da más temperatura, pero menos que el modelo anterior, y alborota más la fcn de perdida (3)
 #model = PINN([50,1])
@@ -244,18 +285,8 @@ for epoch in range(1, epochs+1):
 
     with tf.GradientTape() as tape:
 
-        """
-        if epoch == 1000:
-            optimizer.learning_rate.assign(5e-7) #5e-5
 
-        elif epoch == 2000:
-            optimizer.learning_rate.assign(5e-8)
-
-        elif epoch == 2500:
-            optimizer.learning_rate.assign(5e-9)       
-        """
-
-        loss_1 = EDP_loss(model, x, t, alpha_pde,beta_pde,T_final,epsilon,gamma)
+        loss_1 = EDP_loss(model, x, t,w_ti)
 
         loss_2 = Valores_Iniciales_loss(model, x_in, t_in, u0_func)
 
@@ -267,7 +298,7 @@ for epoch in range(1, epochs+1):
 
         History_loss_3.append(loss_3)
 
-        PINN_loss = w_pde*loss_1 + w_ic*loss_2 + w_bc*loss_3
+        PINN_loss = w_pde*loss_1 + w_ic*loss_2 + w_bc*loss_3  #RECUERDA QUE QUITASTE LSO PESOS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
         History_total_loss.append(PINN_loss.numpy())  # Almacenar la pérdida total
 
@@ -282,13 +313,11 @@ for epoch in range(1, epochs+1):
     """    
 
     if epoch%100==0:
-        xt = tf.concat([
-        tf.reshape(x, (-1, 1)),
-        tf.reshape(t, (-1, 1))
-        ], axis=1)
+        xt = tf.concat([x, t], axis=1)
         u_pred = model(xt)                                                  #al parecer, esto me esta diciendo en que época obtuve mi blow-up, tengo que ver si hubo una variación brusca
-        intensidad= tf.reduce_max(tf.abs(u_pred)).numpy()
-        print("intensidad en la epoca ", epoch," :",intensidad)
+        u_max= tf.reduce_max(tf.abs(u_pred)).numpy()
+        print("intensidad en la epoca ", epoch," :",u_max)
+       
 
         
 
@@ -373,6 +402,12 @@ funciones_de_perdida_GRAF(x,asintota,History_loss_1,History_loss_2,History_loss_
 
 mapa_de_calor_y_grafico_3D_para_la_PINN_GRAF(u_φ,X_np,T_np)
 
+"""
+ANEXO!!!
+ 
+* Cuando ejecutes el mapa de calor de las Diferencias finititas, el paso original va hasta 0.12 en (t) porque la definición del delta de t, que es dt
+* No obstante cuando se compara con la solución de la PINN, el mapa toma el intervalo del T_final para comparar ya que deben de tener el mismo tamaño y hay se extiende más la vista de la solución en Diferencias Finitas
+"""
 
 PINN_vs_Diferencias_finitas_GRAF(u_φ,X_np,T_np)
 #NOTAS
