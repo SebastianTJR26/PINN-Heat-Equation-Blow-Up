@@ -187,6 +187,13 @@ def Interfaz_espacio_loss(P1model,P2model,x,t,x_mid):
     return (tf.reduce_mean((PINN1- PINN2)**2))      # (t) se evalua en este valor porque siguen teniendo el mismo (t), este no se partio, esta dividida por el espacio
 
 
+def Interfaz_tiempo_loss(P1model,P2model,x,t,T_mid):
+    intercepcion_t = tf.ones_like(t, dtype=tf.float64) * T_mid
+    PINN1 = P1model(tf.concat([x, intercepcion_t], axis=1))
+    PINN2 = P2model(tf.concat([x, intercepcion_t], axis=1))
+    return (tf.reduce_mean((PINN1- PINN2)**2))
+
+
 #tercer paso, generamos la data de la EDP (SEGUN LA ECUACION DEL CALOR) y definimos el entrenamiento
 #---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #(1)Defino la data
@@ -242,13 +249,15 @@ distribucion_dominio_y_condicion_inicial_GRAF(x,t,x_in,t_in,u0_func,x_line,u0_li
 
 
 #____________________________________________________________________________________________________________________________________
-#DOMINIOS XPINN
+#DOMINIOS XPINN  en el espacio
+"""
+
 #Datos Dominio
 
 x_mid = 0.0 # porque en x=0 se arte el dominio
 x1 = tf.random.uniform((Puntos_dom, 1), minval=-1.0, maxval=x_mid, dtype=tf.float64)
 x2 = tf.random.uniform((Puntos_dom, 1), minval=x_mid, maxval=1.0, dtype=tf.float64)                      #-1<x1<0 0<x2<1
-t = tf.random.uniform((Puntos_dom, 1), minval=0.0,    maxval=T_final,  dtype=tf.float64)               # t>0
+t = tf.random.uniform((Puntos_dom, 1), minval=0.0,    maxval=T_final,  dtype=tf.float64)                 # t>0
 
 #t = T_final*(1-tf.random.uniform((Puntos_dom, 1),minval = 0.0 , maxval = 1.0, dtype=tf.float64)**beta)               # t>0
 
@@ -276,6 +285,35 @@ u_bn_func  = tf.zeros_like(t_bn, dtype=tf.float64)
 
 distribucion_dominio_y_condicion_inicial_GRAF(x1,t,x1_in,t1_in,u0_func1,x_line,u0_line,x_bnL,x_bnM,t_bn,T_final)
 distribucion_dominio_y_condicion_inicial_GRAF(x2,t,x2_in,t2_in,u0_func2,x_line,u0_line,x_bnM,x_bnR,t_bn,T_final)
+"""
+#AHORA DIVIREMOS UNA XPINN EN EL TIEMPO
+
+#Datos Dominio
+T_mid = 0.15
+x = tf.random.uniform((Puntos_dom, 1), minval=-1.0, maxval=1.0, dtype=tf.float64)
+t1 = tf.random.uniform((Puntos_dom, 1), minval=0.0,    maxval=T_mid,  dtype=tf.float64)
+t2 = tf.random.uniform((Puntos_dom, 1), minval=T_mid,    maxval=T_final,  dtype=tf.float64)
+
+#Datos Cond Ini
+x_in = tf.random.uniform((Puntos_ic, 1), minval=-1.0, maxval=1.0, dtype=tf.float64)
+t_in1 = tf.zeros_like(x_in, dtype=tf.float64) # en u(x_in,0) genere la cantidad de puntos donde esta definido x_in, esta si debe ser la condición inicial original u_φ(0) porque la primera PINN siempre parte desde hay
+t_in2 = tf.ones_like(x_in, dtype=tf.float64) * T_mid #u(x_in,T_mid) ya esta si asume la condición inicial donde se allás partido el tiempo
+u0_func = funcion_valor_inicial(x_in)
+
+#Frontera
+
+t_bn1  = tf.random.uniform((Puntos_bn, 1), minval=0.0, maxval=T_mid, dtype=tf.float64) 
+t_bn2  = tf.random.uniform((Puntos_bn, 1), minval=T_mid, maxval=T_final, dtype=tf.float64) 
+x_bnL1 = tf.ones_like(t_bn1, dtype=tf.float64) * -1.0  
+x_bnR1 = tf.ones_like(t_bn1, dtype=tf.float64) * 1.0   # como estan hechas con t_bn1, solo la linea solo ira hasta T_mid, por eso no las puedo re usar
+x_bnL2 = tf.ones_like(t_bn2, dtype=tf.float64) * -1.0  
+x_bnR2 = tf.ones_like(t_bn2, dtype=tf.float64) * 1.0   # aqui es el mismo caso, pero t_bn2 no termina en T_mid, sino comienza hay las lineas hasta el T_final               
+u_bn_func1  = tf.zeros_like(t_bn1, dtype=tf.float64)
+u_bn_func2  = tf.zeros_like(t_bn2, dtype=tf.float64)
+
+distribucion_dominio_y_condicion_inicial_GRAF(x,t1,x_in,t_in1,u0_func,x_line,u0_line,x_bnL1,x_bnR1,t_bn1,T_final)
+distribucion_dominio_y_condicion_inicial_GRAF(x,t2,x_in,t_in2,u0_func,x_line,u0_line,x_bnL2,x_bnR2,t_bn2,T_final)
+
 
 epsilon = 1e-3 #para cuando T_final=t, y no divida por 0, un valor demasiado minusculo para que no altere lo demas
 
@@ -332,21 +370,22 @@ for epoch in range(1, epochs+1):
 
     with tf.GradientTape(persistent=True) as tape:
 
-        loss_interfaz_x = Interfaz_espacio_loss(P1model,P2model,x,t,x_mid)
+        #loss_interfaz_x = Interfaz_espacio_loss(P1model,P2model,x,t,x_mid)
+        loss_interfaz_t = Interfaz_tiempo_loss(P1model,P2model,x,t,T_mid)
 
         #funciones de perdidida
-        P1loss_pde = EDP_loss(P1model, x1, t,w_ti)
-        P1loss_in = Valores_Iniciales_loss(P1model, x1_in, t1_in, u0_func1)
-        P1loss_bn = Frontera_loss(P1model, x_bnL, x_bnM , t_bn, u_bn_func)
+        P1loss_pde = EDP_loss(P1model, x, t1,w_ti)
+        P1loss_in = Valores_Iniciales_loss(P1model, x_in, t_in1, u0_func)
+        P1loss_bn = Frontera_loss(P1model, x_bnL1 , x_bnR1 , t_bn1, u_bn_func1)
 
-        PINN1_loss = w_pde*P1loss_pde + w_ic*P1loss_in + w_bc*P1loss_bn+loss_interfaz_x
+        PINN1_loss = w_pde*P1loss_pde + w_ic*P1loss_in + w_bc*P1loss_bn+loss_interfaz_t
 
 
-        P2loss_pde = EDP_loss(P2model, x2, t,w_ti)
-        P2loss_in = Valores_Iniciales_loss(P2model, x2_in, t2_in, u0_func2)
-        P2loss_bn = Frontera_loss(P2model, x_bnM, x_bnR , t_bn, u_bn_func)
+        P2loss_pde = EDP_loss(P2model, x, t2,w_ti)
+        P2loss_in = Valores_Iniciales_loss(P2model, x_in, t_in2, u0_func)
+        P2loss_bn = Frontera_loss(P2model, x_bnL2 , x_bnR2 , t_bn2, u_bn_func2)
 
-        PINN2_loss = w_pde*P2loss_pde + w_ic*P2loss_in + w_bc*P2loss_bn+loss_interfaz_x 
+        PINN2_loss = w_pde*P2loss_pde + w_ic*P2loss_in + w_bc*P2loss_bn+loss_interfaz_t
 
         #bacpropagation
         gradients_1 = tape.gradient(PINN1_loss, P1model.trainable_variables)
@@ -385,8 +424,8 @@ for epoch in range(1, epochs+1):
 
     
     if epoch%100==0:
-        P1xt = tf.concat([x1, t], axis=1)
-        P2xt = tf.concat([x2, t], axis=1)
+        P1xt = tf.concat([x, t1], axis=1)
+        P2xt = tf.concat([x, t2], axis=1)
         u1 = P1model(P1xt)
         u2 = P2model(P2xt)
         u_max_1 = tf.reduce_max(tf.abs(u1)).numpy()
@@ -411,9 +450,9 @@ print("Tiempo de ejecución:", end - start, "segundos")
 #cuarto paso, mostramos vizualisaciones de los datos
 #---------------------------------------------------------------------------------------------
 #oooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
-x_vis1 = tf.linspace(-1.0, 0.0, 150)
-x_vis2 = tf.linspace(0.0, 1.0, 150)
-t_vis = tf.linspace(0.0, T_final, 250)
+x = tf.linspace(-1.0, 1.0, 150)
+t_vis1 = tf.linspace(0.0, T_mid, 250)
+t_vis2 = tf.linspace(T_mid, T_final, 250)
 # ESTO DE ACA ES LO QUE PERMITE VIZUALIZAR BIEN LA MALLA 23/03/2026, 
 # * Uno de los errores que se estaba cometiendo al querer visualizar la solución de u_φ era que antes se mandaba todos los millones de puntos a graficar
 # Lo cual no era necesario, con unos pocos y estableciendo los (x) y (t) definidos de la EDP ya sale bien dibujado
@@ -423,25 +462,25 @@ t_vis = tf.linspace(0.0, T_final, 250)
 # ya que ellas computacionalmente si son faciles de graficas, y como solo las estoy usando para visualizar, más no para entrenar, no afecta en nada a la verdadera solución de u_φ
 
 # 1. Crear la malla con tf.meshgrid
-X1, T = tf.meshgrid(x_vis1, t_vis)  # X representa las posiciones espaciales, T los tiempos
-X2, T = tf.meshgrid(x_vis2, t_vis)  # X representa las posiciones espaciales, T los tiempos
+X, T1 = tf.meshgrid(x, t_vis1)  # X representa las posiciones espaciales, T los tiempos
+X, T2 = tf.meshgrid(x, t_vis2)  # X representa las posiciones espaciales, T los tiempos
 # 2. Aplanar para formar los inputs al modelo
-X1_flat = tf.reshape(X1, [-1])
-X2_flat = tf.reshape(X2, [-1])   
-T_flat = tf.reshape(T, [-1])
-input_tensor1 = tf.stack([X1_flat, T_flat], axis=1)  # (N, 2) donde N = 10000
-input_tensor2 = tf.stack([X2_flat, T_flat], axis=1)  # (N, 2) donde N = 10000
+X_flat = tf.reshape(X, [-1])
+T1_flat = tf.reshape(T1, [-1])
+T2_flat = tf.reshape(T2, [-1])
+input_tensor1 = tf.stack([X_flat, T1_flat], axis=1)  # (N, 2) donde N = 10000
+input_tensor2 = tf.stack([X_flat, T2_flat], axis=1)  # (N, 2) donde N = 10000
 # 3. Evaluar la PINN
 U_pred_1 = P1model(input_tensor1)  # u(x,t) predicho por la red
 U_pred_2 = P2model(input_tensor2)  # u(x,t) predicho por la red
 
-U_pred_1 = tf.reshape(U_pred_1, X1.shape)  # Volver a la forma (100,100)
-U_pred_2 = tf.reshape(U_pred_2, X2.shape)  # Volver a la forma (100,100)
+U_pred_1 = tf.reshape(U_pred_1, X.shape)  # Volver a la forma (100,100)
+U_pred_2 = tf.reshape(U_pred_2, X.shape)  # Volver a la forma (100,100)
 
 # 4. Convertir a NumPy para graficar
-X2_np = X1.numpy()
-X1_np = X2.numpy()
-T_np = T.numpy()
+X_np = X.numpy()
+T1_np = T1.numpy()
+T2_np = T2.numpy()
 
 
 #La solución de la Ecuación Diferencial dada por la PINN se denoratara por: ---(u_φ)---
@@ -481,21 +520,28 @@ asintota = 1200
 
 u_φ = U_pred_1.numpy()
 
-mapa_de_calor_y_grafico_3D_para_la_PINN_GRAF(u_φ,X1_np,T_np)
+mapa_de_calor_y_grafico_3D_para_la_PINN_GRAF(u_φ,X_np,T1_np)
 
 u_φ = U_pred_2.numpy()
 
-mapa_de_calor_y_grafico_3D_para_la_PINN_GRAF(u_φ,X2_np,T_np)
+mapa_de_calor_y_grafico_3D_para_la_PINN_GRAF(u_φ,X_np,T2_np)
 
 
 #PINN_vs_Diferencias_finitas_GRAF(u_φ,X_np,T_np)
-
 #NOTAS
 
 """
 versión 1
 
 * XPINN partido por x, x1 en [-1,0] y x2 en [0,1]
+
+"""
+
+
+"""
+versión 2
+
+* XPINN partido por t, t1 en [0,T_mid] y t2 en [T_mid,T_final]
 
 """
 
