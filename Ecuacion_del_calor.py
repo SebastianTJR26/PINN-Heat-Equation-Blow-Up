@@ -11,11 +11,6 @@ import random
 #Toda operación que lleve el tf, esta ejecutanode en GPU (porque ya CUDA se enlazo con mi grafica NVIDIA y da true)
 #Toda operación con np, esta en CPU
 
-def atanh(x):
-    # Forzamos a que los valores estén en el dominio válido (-1, 1)
-    # para evitar errores numéricos (NaN) durante el entrenamiento.
-    x_clipped = tf.clip_by_value(x, -0.9999, 0.9999)
-    return tf.math.atanh(x_clipped)
 
 from keras.saving import register_keras_serializable
 condicion = input("Activar muestreo adaptativo (S/n):")
@@ -756,4 +751,10 @@ versión 26
 * Se arreglarón algunos errores de ortografía
 * No se tienen registros en la versión 25 de los códigos con los mapas de calor feos, nunca los guarde, pero con esta explicación se podrian recrear si uno quiere intentarlo, ademas esos mapas con poquitos puntos se demoraban en cargar
 * Si por algún motivo vuelves a la (versión 25), se me olvido escribir el encabezado de la versión, pero comienza con (IMPLEMENTACIÓN PONDERADA HACIA EL BLOW UP EN CONSTRUCCIÓN)
+"""
+
+
+"""
+Se borro unas funciones que no hacian nada
+
 """
